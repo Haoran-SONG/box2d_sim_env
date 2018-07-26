@@ -139,7 +139,11 @@ bool Box2DRobotVelocityController::controlArm(const Eigen::VectorXf& positions,
     return true;
 }
 
-Box2DRobotPtr Box2DRobotVelocityController::getRobot() const {
+Box2DRobotPtr Box2DRobotVelocityController::getBox2DRobot() const {
+    return lockRobot();
+}
+
+RobotPtr Box2DRobotVelocityController::getRobot() const {
     return lockRobot();
 }
 
