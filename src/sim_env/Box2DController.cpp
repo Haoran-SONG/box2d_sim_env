@@ -147,6 +147,26 @@ RobotPtr Box2DRobotVelocityController::getRobot() const {
     return lockRobot();
 }
 
+RobotVelocityControllerPtr Box2DRobotVelocityController::clone(WorldPtr world){
+    auto box2d_world = std::dynamic_pointer_cast<Box2DWorld>(world);
+    if (!box2d_world) {
+        throw std::logic_error("Could not clone velocity controller. The provided world is not a Box2DWorld.");
+    }
+    auto my_robot = getBox2DRobot();
+    assert(my_robot);
+    auto new_robot = box2d_world->getBox2DRobot(my_robot->getName());
+    if (!new_robot) {
+        throw std::logic_error("Could not clone velocity controller. The provided world does not contain my robot");
+    }
+    auto new_controller = std::make_shared<Box2DRobotVelocityController>(new_robot);
+    using namespace std::placeholders;
+    sim_env::Robot::ControlCallback callback = std::bind(&sim_env::Box2DRobotVelocityController::control,
+                                                                    new_controller,
+                                                                    _1, _2, _3, _4, _5);
+    new_robot->setController(callback);
+    return new_controller;
+}
+
 Box2DRobotPtr Box2DRobotVelocityController::lockRobot() const {
     Box2DRobotPtr robot = _box2d_robot.lock();
     if (!robot) {

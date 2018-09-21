@@ -31,6 +31,7 @@ namespace sim_env {
                     Eigen::VectorXf& output);
         Box2DRobotPtr getBox2DRobot() const;
         RobotPtr getRobot() const override;
+        RobotVelocityControllerPtr clone(WorldPtr world) override;
     protected:
         Box2DRobotPtr lockRobot() const;
         float computeKinematicChainInertia(JointConstPtr joint) const;
