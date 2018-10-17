@@ -3,36 +3,39 @@
 //
 
 // our includes
-#include <sim_env/Box2DWorldViewer.h>
 #include <sim_env/Box2DController.h>
+#include <sim_env/Box2DWorldViewer.h>
 // stl includes
-#include <cstring>
-#include <random>
 #include <chrono>
+#include <cstring>
 #include <memory>
+#include <random>
 // boost includes
 #include <boost/math/constants/constants.hpp>
 // QT includes
-#include <QtGui/QVBoxLayout>
+#include <QtCore/QSize>
+#include <QtCore/QTimer>
 #include <QtGui/QLabel>
 #include <QtGui/QPushButton>
-#include <QtGui/QWidget>
-#include <QtGui/QWheelEvent>
 #include <QtGui/QRadioButton>
-#include <QtCore/QTimer>
-#include <QtCore/QSize>
+#include <QtGui/QVBoxLayout>
+#include <QtGui/QWheelEvent>
+#include <QtGui/QWidget>
 
 //////////////////////////////////////// utils /////////////////////////////////////////////
-int sim_env::viewer::utils::toTickValue(float value, float min, float max) {
+int sim_env::viewer::utils::toTickValue(float value, float min, float max)
+{
     return (int)(std::floor((value - min) / (max - min) * 100.0f));
 }
 
-float sim_env::viewer::utils::fromTickValue(int tick, float min, float max) {
+float sim_env::viewer::utils::fromTickValue(int tick, float min, float max)
+{
     return (float)(tick) / 100.0f * (max - min) + min;
 }
 
 //////////////////////////////////////// Box2DObjectView ////////////////////////////////////////
-sim_env::viewer::Box2DObjectView::Box2DObjectView(sim_env::Box2DObjectPtr object, sim_env::viewer::Box2DWorldView* world_view) {
+sim_env::viewer::Box2DObjectView::Box2DObjectView(sim_env::Box2DObjectPtr object, sim_env::viewer::Box2DWorldView* world_view)
+{
     _object = object;
     _world_view = world_view;
     std::vector<LinkConstPtr> links;
@@ -40,7 +43,7 @@ sim_env::viewer::Box2DObjectView::Box2DObjectView(sim_env::Box2DObjectPtr object
     setFlag(GraphicsItemFlag::ItemIsSelectable, true);
     setFlag(GraphicsItemFlag::ItemIsMovable, true);
     setFlag(GraphicsItemFlag::ItemSendsScenePositionChanges, true);
-    for (auto& link : links){
+    for (auto& link : links) {
         Box2DLinkConstPtr box2d_link = std::static_pointer_cast<const Box2DLink>(link);
         _link_views.emplace_back(new Box2DLinkView(box2d_link, this));
         if (object->isStatic()) {
@@ -54,12 +57,14 @@ sim_env::viewer::Box2DObjectView::Box2DObjectView(sim_env::Box2DObjectPtr object
 
 sim_env::viewer::Box2DObjectView::~Box2DObjectView() = default;
 
-QRectF sim_env::viewer::Box2DObjectView::boundingRect() const {
+QRectF sim_env::viewer::Box2DObjectView::boundingRect() const
+{
     return this->childrenBoundingRect();
 }
 
-void sim_env::viewer::Box2DObjectView::paint(QPainter *painter, const QStyleOptionGraphicsItem *option,
-                                             QWidget *widget) {
+void sim_env::viewer::Box2DObjectView::paint(QPainter* painter, const QStyleOptionGraphicsItem* option,
+    QWidget* widget)
+{
     if (_object.expired()) {
         auto logger = DefaultLogger::getInstance();
         logger->logErr("The object to visualize is not available anymore.", "[sim_env::viewer::Box2DObjectView::paint]");
@@ -78,7 +83,8 @@ void sim_env::viewer::Box2DObjectView::paint(QPainter *painter, const QStyleOpti
     }
 }
 
-void sim_env::viewer::Box2DObjectView::setColor(float r, float g, float b) {
+void sim_env::viewer::Box2DObjectView::setColor(float r, float g, float b)
+{
     auto color = QColor();
     color.setRgbF(r, g, b);
     for (auto* link : _link_views) {
@@ -86,18 +92,21 @@ void sim_env::viewer::Box2DObjectView::setColor(float r, float g, float b) {
     }
 }
 
-void sim_env::viewer::Box2DObjectView::resetColor() {
+void sim_env::viewer::Box2DObjectView::resetColor()
+{
     setColor(_default_color.redF(), _default_color.greenF(), _default_color.blueF());
 }
 
-void sim_env::viewer::Box2DObjectView::mousePressEvent(QGraphicsSceneMouseEvent *event) {
+void sim_env::viewer::Box2DObjectView::mousePressEvent(QGraphicsSceneMouseEvent* event)
+{
     auto logger = DefaultLogger::getInstance();
     std::string prefix("[sim_env::viewer::Box2DObject::mousePressEvent]");
     logger->logDebug("Object selected", prefix);
     _world_view->setSelectedObject(_object);
 }
 
-void sim_env::viewer::Box2DObjectView::wheelEvent(QGraphicsSceneWheelEvent *event) {
+void sim_env::viewer::Box2DObjectView::wheelEvent(QGraphicsSceneWheelEvent* event)
+{
     auto logger = DefaultLogger::getInstance();
     auto object = _object.lock();
     if (!object or not isSelected()) {
@@ -112,29 +121,30 @@ void sim_env::viewer::Box2DObjectView::wheelEvent(QGraphicsSceneWheelEvent *even
     object->setPose(pose);
 }
 
-QVariant sim_env::viewer::Box2DObjectView::itemChange(QGraphicsItem::GraphicsItemChange change, const QVariant &value) {
+QVariant sim_env::viewer::Box2DObjectView::itemChange(QGraphicsItem::GraphicsItemChange change, const QVariant& value)
+{
     auto return_value = QGraphicsItem::itemChange(change, value);
     auto object = _object.lock();
     if (!object) {
         return return_value;
     }
     switch (change) {
-        case GraphicsItemChange::ItemPositionHasChanged:
-        {
-            auto pose = object->getPose();
-            pose[0] = scenePos().x();
-            pose[1] = scenePos().y();
-            object->setPose(pose);
-            break;
-        }
-        default:
-            break;
+    case GraphicsItemChange::ItemPositionHasChanged: {
+        auto pose = object->getPose();
+        pose[0] = scenePos().x();
+        pose[1] = scenePos().y();
+        object->setPose(pose);
+        break;
+    }
+    default:
+        break;
     }
     return return_value;
 }
 
 //////////////////////////////////////// Box2DRobotView ////////////////////////////////////////
-sim_env::viewer::Box2DRobotView::Box2DRobotView(sim_env::Box2DRobotPtr robot, Box2DWorldView* world_view) {
+sim_env::viewer::Box2DRobotView::Box2DRobotView(sim_env::Box2DRobotPtr robot, Box2DWorldView* world_view)
+{
     _robot = robot;
     _world_view = world_view;
     std::vector<LinkConstPtr> links;
@@ -151,7 +161,8 @@ sim_env::viewer::Box2DRobotView::Box2DRobotView(sim_env::Box2DRobotPtr robot, Bo
 
 sim_env::viewer::Box2DRobotView::~Box2DRobotView() = default;
 
-void sim_env::viewer::Box2DRobotView::setColor(float r, float g, float b) {
+void sim_env::viewer::Box2DRobotView::setColor(float r, float g, float b)
+{
     auto color = QColor();
     color.setRgbF(r, g, b);
     for (auto* link : _link_views) {
@@ -159,23 +170,27 @@ void sim_env::viewer::Box2DRobotView::setColor(float r, float g, float b) {
     }
 }
 
-void sim_env::viewer::Box2DRobotView::resetColor() {
+void sim_env::viewer::Box2DRobotView::resetColor()
+{
     setColor(_default_color.redF(), _default_color.greenF(), _default_color.blueF());
 }
 
-void sim_env::viewer::Box2DRobotView::mousePressEvent(QGraphicsSceneMouseEvent *event) {
+void sim_env::viewer::Box2DRobotView::mousePressEvent(QGraphicsSceneMouseEvent* event)
+{
     auto logger = DefaultLogger::getInstance();
     std::string prefix("[sim_env::viewer::Box2DRobotView::mousePressEvent]");
     logger->logDebug("Mouse pressed on robot.", prefix);
     _world_view->setSelectedObject(_robot);
 }
 
-QRectF sim_env::viewer::Box2DRobotView::boundingRect() const {
+QRectF sim_env::viewer::Box2DRobotView::boundingRect() const
+{
     return this->childrenBoundingRect();
 }
 
-void sim_env::viewer::Box2DRobotView::paint(QPainter *painter, const QStyleOptionGraphicsItem *option,
-                                            QWidget *widget) {
+void sim_env::viewer::Box2DRobotView::paint(QPainter* painter, const QStyleOptionGraphicsItem* option,
+    QWidget* widget)
+{
     if (_robot.expired()) {
         auto logger = DefaultLogger::getInstance();
         logger->logErr("The robot to visualize is not available anymore.", "[sim_env::viewer::Box2DRobotView::paint]");
@@ -194,28 +209,29 @@ void sim_env::viewer::Box2DRobotView::paint(QPainter *painter, const QStyleOptio
     }
 }
 
-QVariant sim_env::viewer::Box2DRobotView::itemChange(QGraphicsItem::GraphicsItemChange change, const QVariant &value) {
+QVariant sim_env::viewer::Box2DRobotView::itemChange(QGraphicsItem::GraphicsItemChange change, const QVariant& value)
+{
     auto return_value = QGraphicsItem::itemChange(change, value);
     auto robot = _robot.lock();
     if (!robot) {
         return return_value;
     }
     switch (change) {
-        case GraphicsItemChange ::ItemPositionHasChanged:
-        {
-            auto pose = robot->getPose();
-            pose[0] = scenePos().x();
-            pose[1] = scenePos().y();
-            robot->setPose(pose);
-            break;
-        }
-        default:
-            break;
+    case GraphicsItemChange ::ItemPositionHasChanged: {
+        auto pose = robot->getPose();
+        pose[0] = scenePos().x();
+        pose[1] = scenePos().y();
+        robot->setPose(pose);
+        break;
+    }
+    default:
+        break;
     }
     return return_value;
 }
 
-void sim_env::viewer::Box2DRobotView::wheelEvent(QGraphicsSceneWheelEvent *event) {
+void sim_env::viewer::Box2DRobotView::wheelEvent(QGraphicsSceneWheelEvent* event)
+{
     auto logger = DefaultLogger::getInstance();
     auto robot = _robot.lock();
     if (!robot or not isSelected()) {
@@ -231,14 +247,16 @@ void sim_env::viewer::Box2DRobotView::wheelEvent(QGraphicsSceneWheelEvent *event
 }
 //////////////////////////////////////// Box2DLinkView ////////////////////////////////////////
 sim_env::viewer::Box2DLinkView::Box2DLinkView(sim_env::Box2DLinkConstPtr link,
-                                              QGraphicsItem* parent):QGraphicsItem(parent) {
+    QGraphicsItem* parent)
+    : QGraphicsItem(parent)
+{
     _link = link;
-    _border_color = QColor(0,0,0);
+    _border_color = QColor(0, 0, 0);
     _fill_color = QColor(140, 140, 140);
     _ball_color = QColor(255, 0, 0, 100);
     Box2DWorldPtr world = link->getBox2DWorld();
 
-    std::vector<std::vector<Eigen::Vector2f> > geometry;
+    std::vector<std::vector<Eigen::Vector2f>> geometry;
     link->getGeometry(geometry);
     for (auto& polygon : geometry) {
         QPolygonF qt_polygon;
@@ -252,22 +270,25 @@ sim_env::viewer::Box2DLinkView::Box2DLinkView(sim_env::Box2DLinkConstPtr link,
     link->getLocalBallApproximation(_balls);
 }
 
-void sim_env::viewer::Box2DLinkView::setColors(const QColor& fill_color, const QColor& border_color, const QColor& ball_color) {
+void sim_env::viewer::Box2DLinkView::setColors(const QColor& fill_color, const QColor& border_color, const QColor& ball_color)
+{
     _border_color = border_color;
     _fill_color = fill_color;
     _ball_color = ball_color;
 }
 
-QRectF sim_env::viewer::Box2DLinkView::boundingRect() const {
+QRectF sim_env::viewer::Box2DLinkView::boundingRect() const
+{
     return _bounding_rect;
 }
 
-void sim_env::viewer::Box2DLinkView::paint(QPainter *painter, const QStyleOptionGraphicsItem *option, QWidget *widget) {
+void sim_env::viewer::Box2DLinkView::paint(QPainter* painter, const QStyleOptionGraphicsItem* option, QWidget* widget)
+{
     // first set the transform of the link
     Box2DLinkConstPtr link = _link.lock();
     ObjectPtr object = link->getObject();
     auto logger = DefaultLogger::getInstance();
-//    logger->logDebug("drawing link");
+    //    logger->logDebug("drawing link");
     if (not object) {
         std::stringstream ss;
         ss << "link " << link->getName() << " did not return a valid parent object";
@@ -279,8 +300,8 @@ void sim_env::viewer::Box2DLinkView::paint(QPainter *painter, const QStyleOption
     Eigen::Matrix4f relative_transform = world_object_transform.inverse().matrix() * world_link_transform.matrix();
     // Qt uses transposed matrices!!!! So we need to transpose the 2x2 rotation block
     QTransform my_transform(relative_transform(0, 0), relative_transform(1, 0),
-                            relative_transform(0, 1), relative_transform(1, 1),
-                            relative_transform(0, 3), relative_transform(1, 3));
+        relative_transform(0, 1), relative_transform(1, 1),
+        relative_transform(0, 3), relative_transform(1, 3));
     setTransform(my_transform);
     // now draw
     const QBrush original_brush = painter->brush();
@@ -310,8 +331,9 @@ void sim_env::viewer::Box2DLinkView::paint(QPainter *painter, const QStyleOption
 
 //////////////////////////////////////// Box2DJointView ////////////////////////////////////////
 sim_env::viewer::Box2DJointView::Box2DJointView(sim_env::Box2DJointConstPtr joint, QGraphicsScene* scene,
-                                                QGraphicsItem* parent):QGraphicsItem(parent) {
-
+    QGraphicsItem* parent)
+    : QGraphicsItem(parent)
+{
 }
 
 //sim_env::viewer::Box2DJointView::~Box2DJointView() {
@@ -320,24 +342,28 @@ sim_env::viewer::Box2DJointView::Box2DJointView(sim_env::Box2DJointConstPtr join
 
 //////////////////////////////////////// Box2DFrameView ////////////////////////////////////////
 sim_env::viewer::Box2DFrameView::Box2DFrameView(const Eigen::Affine3f& frame,
-                                                float length,
-                                                float width,
-                                                QGraphicsItem* parent):QGraphicsItem(parent) {
+    float length,
+    float width,
+    QGraphicsItem* parent)
+    : QGraphicsItem(parent)
+{
     Eigen::Matrix3f rotation_matrix = frame.rotation();
     auto translation = frame.translation();
     setTransform(QTransform(rotation_matrix(0, 0), rotation_matrix(1, 0),
-                            rotation_matrix(0, 1), rotation_matrix(1, 1),
-                            translation(0), translation(1)));
+        rotation_matrix(0, 1), rotation_matrix(1, 1),
+        translation(0), translation(1)));
     _x_axis = QLineF(QPointF(0.0f, 0.0f), QPointF(length, 0.0f));
     _y_axis = QLineF(QPointF(0.0f, 0.0f), QPointF(0.0f, length));
     _width = width;
 }
 
-QRectF sim_env::viewer::Box2DFrameView::boundingRect() const {
+QRectF sim_env::viewer::Box2DFrameView::boundingRect() const
+{
     return QRectF(0, 0, 1, 1);
 }
 
-void sim_env::viewer::Box2DFrameView::paint(QPainter* painter, const QStyleOptionGraphicsItem* option, QWidget *widget) {
+void sim_env::viewer::Box2DFrameView::paint(QPainter* painter, const QStyleOptionGraphicsItem* option, QWidget* widget)
+{
     const QPen original_pen = painter->pen();
     QPen my_pen;
     my_pen.setColor(QColor(255, 0, 0));
@@ -352,18 +378,22 @@ void sim_env::viewer::Box2DFrameView::paint(QPainter* painter, const QStyleOptio
 }
 
 //////////////////////////////////////// LineEditChangeDetector ////////////////////////////////////////
-sim_env::viewer::LineEditChangeDetector::LineEditChangeDetector(QObject *parent):QObject(parent) {
+sim_env::viewer::LineEditChangeDetector::LineEditChangeDetector(QObject* parent)
+    : QObject(parent)
+{
 }
 
-sim_env::viewer::LineEditChangeDetector::~LineEditChangeDetector() {
+sim_env::viewer::LineEditChangeDetector::~LineEditChangeDetector()
+{
 }
 
-bool sim_env::viewer::LineEditChangeDetector::eventFilter(QObject *qobject, QEvent *event) {
+bool sim_env::viewer::LineEditChangeDetector::eventFilter(QObject* qobject, QEvent* event)
+{
     // we are only interested in key-press and focus-out events
     if (event->type() != QEvent::FocusOut and event->type() != QEvent::KeyPress) {
         return false;
     } else if (event->type() == QEvent::KeyPress) {
-        QKeyEvent *key_event = static_cast<QKeyEvent *>(event);
+        QKeyEvent* key_event = static_cast<QKeyEvent*>(event);
         // we are only reacting when the key enter was pressed
         if (key_event->key() != Qt::Key_Enter) {
             return false;
@@ -380,12 +410,14 @@ bool sim_env::viewer::LineEditChangeDetector::eventFilter(QObject *qobject, QEve
 const std::string sim_env::viewer::Box2DObjectStateView::LINE_EDIT_TYPE_PROPERTY_KEY = "LINE_EDIT_TYPE_KEY";
 const std::string sim_env::viewer::Box2DObjectStateView::LINE_EDIT_DOF_PROPERTY_KEY = "LINE_EDIT_DOF_KEY";
 
-sim_env::viewer::Box2DObjectStateView::Box2DObjectStateView(QWidget *parent):QGroupBox(parent) {
+sim_env::viewer::Box2DObjectStateView::Box2DObjectStateView(QWidget* parent)
+    : QGroupBox(parent)
+{
     setTitle("Selected object state");
     _form_layout = new QFormLayout();
     _line_edit_change_detector = new LineEditChangeDetector(this);
     QObject::connect(_line_edit_change_detector, SIGNAL(valueChanged(QLineEdit*)),
-                     this, SLOT(lineEditChange(QLineEdit*)));
+        this, SLOT(lineEditChange(QLineEdit*)));
     setLayout(_form_layout);
     _mode_button = new QPushButton("View");
     _mode_button->setCheckable(true);
@@ -396,11 +428,12 @@ sim_env::viewer::Box2DObjectStateView::Box2DObjectStateView(QWidget *parent):QGr
     QObject::connect(_mode_button, SIGNAL(clicked(bool)), this, SLOT(setViewMode(bool)));
 }
 
-sim_env::viewer::Box2DObjectStateView::~Box2DObjectStateView() {
+sim_env::viewer::Box2DObjectStateView::~Box2DObjectStateView()
+{
 }
 
-
-void sim_env::viewer::Box2DObjectStateView::setCurrentObject(sim_env::ObjectWeakPtr object) {
+void sim_env::viewer::Box2DObjectStateView::setCurrentObject(sim_env::ObjectWeakPtr object)
+{
     _current_object = object;
     synchView();
     _mode_button->setChecked(false);
@@ -408,7 +441,8 @@ void sim_env::viewer::Box2DObjectStateView::setCurrentObject(sim_env::ObjectWeak
     showValues(true);
 }
 
-void sim_env::viewer::Box2DObjectStateView::sliderChange(int value) {
+void sim_env::viewer::Box2DObjectStateView::sliderChange(int value)
+{
     if (_current_object.expired()) {
         return;
     }
@@ -416,7 +450,7 @@ void sim_env::viewer::Box2DObjectStateView::sliderChange(int value) {
     for (size_t i = 0; i < _joint_position_sliders.size(); ++i) {
         if (_joint_position_sliders.at(i) == QObject::sender()) {
             Eigen::VectorXi indices(1);
-            indices[0] = (int) (i + object->getNumBaseDOFs());
+            indices[0] = (int)(i + object->getNumBaseDOFs());
             Eigen::ArrayX2f limits = object->getDOFPositionLimits(indices);
             Eigen::VectorXf configuration(1);
             configuration[0] = utils::fromTickValue(value, limits(0, 0), limits(0, 1));
@@ -432,7 +466,8 @@ void sim_env::viewer::Box2DObjectStateView::sliderChange(int value) {
     }
 }
 
-void sim_env::viewer::Box2DObjectStateView::lineEditChange(QLineEdit *line_edit) {
+void sim_env::viewer::Box2DObjectStateView::lineEditChange(QLineEdit* line_edit)
+{
     // we do not need to do anything, if we do not have an object
     ObjectPtr object = _current_object.lock();
     if (!object) {
@@ -442,11 +477,11 @@ void sim_env::viewer::Box2DObjectStateView::lineEditChange(QLineEdit *line_edit)
     LoggerPtr logger = object->getWorld()->getLogger();
     bool conversion_ok = true;
     QVariant type_property = line_edit->property(LINE_EDIT_TYPE_PROPERTY_KEY.c_str());
-    int type_property_int =  type_property.toInt(&conversion_ok);
+    int type_property_int = type_property.toInt(&conversion_ok);
     if (not conversion_ok
         or (type_property_int != LINE_EDIT_OBJECT_POSE_TYPE
-            and type_property_int != LINE_EDIT_OBJECT_VEL_TYPE
-            and type_property_int != LINE_EDIT_JOINT_VEL_TYPE)) {
+               and type_property_int != LINE_EDIT_OBJECT_VEL_TYPE
+               and type_property_int != LINE_EDIT_JOINT_VEL_TYPE)) {
         throw std::logic_error("[sim_env::viewer::Box2DObjectStateView::lineEditChange]"
                                " Could not determine type of line edit. This should not happen and indicates corruption of this widget.");
     }
@@ -461,7 +496,7 @@ void sim_env::viewer::Box2DObjectStateView::lineEditChange(QLineEdit *line_edit)
     if (not conversion_ok) {
         LoggerPtr logger = object->getWorld()->getLogger();
         logger->logErr("Could not parse value. Invalid floating point number.",
-                       "[sim_env::viewer::Box2DObjectStateView::lineEditChange]");
+            "[sim_env::viewer::Box2DObjectStateView::lineEditChange]");
         return;
     }
     // now check the type of the line edit
@@ -490,12 +525,13 @@ void sim_env::viewer::Box2DObjectStateView::lineEditChange(QLineEdit *line_edit)
     emit newUserState();
 }
 
-void sim_env::viewer::Box2DObjectStateView::setViewMode(bool enable_edit) {
+void sim_env::viewer::Box2DObjectStateView::setViewMode(bool enable_edit)
+{
     ObjectPtr object = _current_object.lock();
     if (not object) {
         auto logger = DefaultLogger::getInstance();
         logger->logWarn("[sim_env::viewer::Box2DObjectStateView::setViewMode] Could not set view mode"
-                                "as there is no object information available.");
+                        "as there is no object information available.");
         return;
     }
     LoggerPtr logger = object->getWorld()->getLogger();
@@ -511,19 +547,21 @@ void sim_env::viewer::Box2DObjectStateView::setViewMode(bool enable_edit) {
         _joint_position_sliders.at(i - object->getNumBaseDOFs())->setEnabled(enable_edit);
         _joint_velocity_edits.at(i - object->getNumBaseDOFs())->setEnabled(enable_edit);
     }
-    if (enable_edit){
+    if (enable_edit) {
         _mode_button->setText("Edit");
     } else {
         _mode_button->setText("View");
     }
 }
 
-void sim_env::viewer::Box2DObjectStateView::stateUpdate() {
+void sim_env::viewer::Box2DObjectStateView::stateUpdate()
+{
     showValues(not _mode_button->isChecked());
 }
 
-void sim_env::viewer::Box2DObjectStateView::createBaseDOFEdits(ObjectPtr object) {
-    assert (_object_velocity_edits.size() == _object_pose_edits.size());
+void sim_env::viewer::Box2DObjectStateView::createBaseDOFEdits(ObjectPtr object)
+{
+    assert(_object_velocity_edits.size() == _object_pose_edits.size());
     if (_object_pose_edits.size() != 3) {
         // create edit for x value
         QLineEdit* x_edit = new QLineEdit();
@@ -570,11 +608,12 @@ void sim_env::viewer::Box2DObjectStateView::createBaseDOFEdits(ObjectPtr object)
     }
 }
 
-void sim_env::viewer::Box2DObjectStateView::synchView() {
+void sim_env::viewer::Box2DObjectStateView::synchView()
+{
     if (_current_object.expired()) {
         auto logger = DefaultLogger::getInstance();
         logger->logWarn("[sim_env::viewer::Box2DObjectStateView::synchView] Could not synchronize view "
-                                "as there is no object information available.");
+                        "as there is no object information available.");
         return;
     }
     ObjectPtr object = _current_object.lock();
@@ -626,20 +665,22 @@ void sim_env::viewer::Box2DObjectStateView::synchView() {
 }
 
 void sim_env::viewer::Box2DObjectStateView::setSliderValue(QSlider* slider,
-                                                           float value,
-                                                           float min_value,
-                                                           float max_value) {
+    float value,
+    float min_value,
+    float max_value)
+{
     int tick_value = utils::toTickValue(value, min_value, max_value);
     slider->blockSignals(true);
     slider->setValue(tick_value);
     slider->blockSignals(false);
 }
 
-void sim_env::viewer::Box2DObjectStateView::showValues(bool update_input_fields) {
+void sim_env::viewer::Box2DObjectStateView::showValues(bool update_input_fields)
+{
     if (_current_object.expired()) {
         auto logger = DefaultLogger::getInstance();
-//        logger->logDebug("[sim_env::viewer::Box2DObjectStateView::showValues] Could not synchronize view "
-//                                "as there is no object information available.");
+        //        logger->logDebug("[sim_env::viewer::Box2DObjectStateView::showValues] Could not synchronize view "
+        //                                "as there is no object information available.");
         return;
     }
     ObjectPtr object = _current_object.lock();
@@ -699,38 +740,45 @@ void sim_env::viewer::Box2DObjectStateView::showValues(bool update_input_fields)
     }
 }
 
-
 //////////////////////////////////////// Box2DControllerView ////////////////////////////////////////
 
-sim_env::viewer::Box2DControllerView::Box2DControllerView(QWidget *parent) : QGroupBox(parent) {
+sim_env::viewer::Box2DControllerView::Box2DControllerView(QWidget* parent)
+    : QGroupBox(parent)
+{
     initView();
 }
 
-sim_env::viewer::Box2DControllerView::~Box2DControllerView() {
+sim_env::viewer::Box2DControllerView::~Box2DControllerView()
+{
 }
 
-void sim_env::viewer::Box2DControllerView::sliderChange(int value) {
+void sim_env::viewer::Box2DControllerView::sliderChange(int value)
+{
     updateTarget();
 }
 
-void sim_env::viewer::Box2DControllerView::lineEditChange(QLineEdit *line_edit) {
+void sim_env::viewer::Box2DControllerView::lineEditChange(QLineEdit* line_edit)
+{
     updateTarget();
 }
 
-void sim_env::viewer::Box2DControllerView::triggerController(bool enable) {
+void sim_env::viewer::Box2DControllerView::triggerController(bool enable)
+{
     setController();
 }
 
-void sim_env::viewer::Box2DControllerView::triggerControllerTypeChange(bool toggled) {
+void sim_env::viewer::Box2DControllerView::triggerControllerTypeChange(bool toggled)
+{
     updateView();
     setController();
 }
 
-void sim_env::viewer::Box2DControllerView::setCurrentObject(sim_env::ObjectWeakPtr object) {
+void sim_env::viewer::Box2DControllerView::setCurrentObject(sim_env::ObjectWeakPtr object)
+{
     if (object.expired()) {
         LoggerPtr logger = DefaultLogger::getInstance();
         logger->logErr("Provided weak pointer is not referring to a valid object anymore.",
-                       "[sim_env::viewer::Box2DControllerView::setSelectedObject]");
+            "[sim_env::viewer::Box2DControllerView::setSelectedObject]");
         return;
     }
     sim_env::ObjectPtr object_ptr = object.lock();
@@ -758,7 +806,8 @@ void sim_env::viewer::Box2DControllerView::setCurrentObject(sim_env::ObjectWeakP
     }
 }
 
-void sim_env::viewer::Box2DControllerView::initView() {
+void sim_env::viewer::Box2DControllerView::initView()
+{
     QGridLayout* grid_layout = new QGridLayout();
     setLayout(grid_layout);
     _position_button = new QRadioButton("Position control");
@@ -782,13 +831,14 @@ void sim_env::viewer::Box2DControllerView::initView() {
     setEnabled(false);
     _line_edit_change_detector = new LineEditChangeDetector(this);
     QObject::connect(_line_edit_change_detector, SIGNAL(valueChanged(QLineEdit*)),
-                     this, SLOT(lineEditChange(QLineEdit*)));
+        this, SLOT(lineEditChange(QLineEdit*)));
     _x_edit->installEventFilter(_line_edit_change_detector);
     _y_edit->installEventFilter(_line_edit_change_detector);
     _theta_edit->installEventFilter(_line_edit_change_detector);
 }
 
-void sim_env::viewer::Box2DControllerView::updateView() {
+void sim_env::viewer::Box2DControllerView::updateView()
+{
     QLayout* layout = this->layout();
     QGridLayout* grid_layout = dynamic_cast<QGridLayout*>(layout);
     if (!grid_layout) {
@@ -837,12 +887,13 @@ void sim_env::viewer::Box2DControllerView::updateView() {
         }
     }
     // optionally deactivate unused sliders
-    for (int slider_idx = (int) (active_dofs.size()) - dof_offest; slider_idx < (int)_sliders.size(); ++slider_idx) {
+    for (int slider_idx = (int)(active_dofs.size()) - dof_offest; slider_idx < (int)_sliders.size(); ++slider_idx) {
         _sliders.at(slider_idx)->setEnabled(false);
     }
 }
 
-void sim_env::viewer::Box2DControllerView::synchSliderValue(QSlider *slider, sim_env::JointConstPtr joint) {
+void sim_env::viewer::Box2DControllerView::synchSliderValue(QSlider* slider, sim_env::JointConstPtr joint)
+{
     Eigen::Array2f limits;
     float value;
     if (_position_button->isChecked()) {
@@ -865,7 +916,8 @@ void sim_env::viewer::Box2DControllerView::synchSliderValue(QSlider *slider, sim
     slider->blockSignals(false);
 }
 
-void sim_env::viewer::Box2DControllerView::synchTextValue(int dof_idx, sim_env::RobotPtr robot) {
+void sim_env::viewer::Box2DControllerView::synchTextValue(int dof_idx, sim_env::RobotPtr robot)
+{
     LoggerPtr logger = DefaultLogger::getInstance();
     float value;
     Eigen::VectorXi indices(1);
@@ -881,31 +933,32 @@ void sim_env::viewer::Box2DControllerView::synchTextValue(int dof_idx, sim_env::
     }
     QString text("%L1");
     text = text.arg(value);
-    switch(dof_idx) {
-        case 0: {
-            _x_edit->setText(text);
-            break;
-        }
-        case 1: {
-            _y_edit->setText(text);
-            break;
-        }
-        case 2: {
-            _theta_edit->setText(text);
-            break;
-        }
-        default: {
-            logger->logErr("Unknown dof index encountered.", "[sim_env::viewer::Box2DControllerView::synchTextValue]");
-            break;
-        }
+    switch (dof_idx) {
+    case 0: {
+        _x_edit->setText(text);
+        break;
+    }
+    case 1: {
+        _y_edit->setText(text);
+        break;
+    }
+    case 2: {
+        _theta_edit->setText(text);
+        break;
+    }
+    default: {
+        logger->logErr("Unknown dof index encountered.", "[sim_env::viewer::Box2DControllerView::synchTextValue]");
+        break;
+    }
     }
 }
 
-void sim_env::viewer::Box2DControllerView::setController() {
+void sim_env::viewer::Box2DControllerView::setController()
+{
     if (_current_robot.expired()) {
         sim_env::LoggerPtr logger = DefaultLogger::getInstance();
         logger->logErr("Could not access robot - shared pointer expired.",
-                       "[sim_env::viewer::Box2DControllerView::setController]");
+            "[sim_env::viewer::Box2DControllerView::setController]");
         // TODO we need to delete controllers for this expired robot (would need some kind of delete listener)
         return;
     }
@@ -915,18 +968,18 @@ void sim_env::viewer::Box2DControllerView::setController() {
         if (_position_button->isChecked()) {
             // set position controller
             sim_env::Robot::ControlCallback callback = std::bind(&RobotPositionController::control,
-                                                                 _current_position_controller,
-                                                                 _1, _2, _3, _4, _5);
+                _current_position_controller,
+                _1, _2, _3, _4, _5);
             robot->getWorld()->getLogger()->logDebug("Setting position controller",
-                                                     "[sim_env::viewer::Box2DControllerView::setController]");
+                "[sim_env::viewer::Box2DControllerView::setController]");
             robot->setController(callback);
         } else {
             // set velocity controller
             sim_env::Robot::ControlCallback callback = std::bind(&Box2DRobotVelocityController::control,
-                                                                 _current_velocity_controller,
-                                                                 _1, _2, _3, _4, _5);
+                _current_velocity_controller,
+                _1, _2, _3, _4, _5);
             robot->getWorld()->getLogger()->logDebug("Setting velocity controller",
-                                                     "[sim_env::viewer::Box2DControllerView::setController]");
+                "[sim_env::viewer::Box2DControllerView::setController]");
             robot->setController(callback);
         }
     } else {
@@ -935,12 +988,13 @@ void sim_env::viewer::Box2DControllerView::setController() {
     }
 }
 
-void sim_env::viewer::Box2DControllerView::updateTarget() {
+void sim_env::viewer::Box2DControllerView::updateTarget()
+{
     sim_env::RobotPtr robot = _current_robot.lock();
     if (not robot) {
         LoggerPtr logger = DefaultLogger::getInstance();
         logger->logErr("Could not access selected robot - weak pointer expired.",
-                       "[sim_env::viewer::Box2DControllerView::updateTarget]");
+            "[sim_env::viewer::Box2DControllerView::updateTarget]");
         return;
     }
     // If we have a robot we should always have controllers
@@ -956,23 +1010,23 @@ void sim_env::viewer::Box2DControllerView::updateTarget() {
         int dof = active_dofs[i];
         if (dof < robot->getNumBaseDOFs()) { // it's a pose dof, i.e., x, y or theta
             QLineEdit* text_edit;
-            switch(dof) {
-                case 0: {
-                    text_edit = _x_edit;
-                    break;
-                }
-                case 1: {
-                    text_edit = _y_edit;
-                    break;
-                }
-                case 2: {
-                    text_edit = _theta_edit;
-                    break;
-                }
-                default: { // something is seriously wrong if this is the case
-                    throw std::logic_error("[sim_env::viewer::Box2DControllerView::updateTarget]"
-                                           "Encountered invalid dof index. Base dofs should be 0 <= i < 3.");
-                }
+            switch (dof) {
+            case 0: {
+                text_edit = _x_edit;
+                break;
+            }
+            case 1: {
+                text_edit = _y_edit;
+                break;
+            }
+            case 2: {
+                text_edit = _theta_edit;
+                break;
+            }
+            default: { // something is seriously wrong if this is the case
+                throw std::logic_error("[sim_env::viewer::Box2DControllerView::updateTarget]"
+                                       "Encountered invalid dof index. Base dofs should be 0 <= i < 3.");
+            }
             }
             // convert text value to float
             bool conversion_ok = false;
@@ -981,7 +1035,7 @@ void sim_env::viewer::Box2DControllerView::updateTarget() {
                 target[i] = value;
             } else {
                 logger->logErr("Could not retrieve target position. Failed to convert to floating point.",
-                               "[sim_env::viewer::Box2DController::View::updateTarget]");
+                    "[sim_env::viewer::Box2DController::View::updateTarget]");
                 Eigen::VectorXi tmp_index(1);
                 tmp_index[0] = dof;
                 Eigen::VectorXf tmp_value(1);
@@ -999,7 +1053,7 @@ void sim_env::viewer::Box2DControllerView::updateTarget() {
             if (_velocity_button->isChecked()) {
                 limits = joint->getVelocityLimits();
             }
-            target[i] = utils::fromTickValue(_sliders.at((unsigned long) joint_idx)->value(), limits[0], limits[1]);
+            target[i] = utils::fromTickValue(_sliders.at((unsigned long)joint_idx)->value(), limits[0], limits[1]);
         }
     }
     if (_velocity_button->isChecked()) {
@@ -1010,7 +1064,9 @@ void sim_env::viewer::Box2DControllerView::updateTarget() {
 }
 
 //////////////////////////////////////// Box2DWorldView ////////////////////////////////////////
-sim_env::viewer::Box2DWorldView::Box2DWorldView(float pw, float ph, int width, int height, QWidget *parent):QGraphicsView(parent) {
+sim_env::viewer::Box2DWorldView::Box2DWorldView(float pw, float ph, int width, int height, QWidget* parent)
+    : QGraphicsView(parent)
+{
     _scene = new QGraphicsScene();
     _refresh_timer = nullptr;
     _width = width;
@@ -1021,21 +1077,23 @@ sim_env::viewer::Box2DWorldView::Box2DWorldView(float pw, float ph, int width, i
     setRenderHint(QPainter::RenderHint::Antialiasing, true);
     // qt has it's y axis pointing downwards, so let's revert that axis
     setTransform(QTransform(1, 0, 0, 0, -1, 0, 0, 0, 1));
-//    setTransformationAnchor(QGraphicsView::ViewportAnchor::AnchorUnderMouse);
+    //    setTransformationAnchor(QGraphicsView::ViewportAnchor::AnchorUnderMouse);
 }
 
 sim_env::viewer::Box2DWorldView::~Box2DWorldView() = default;
 
-void sim_env::viewer::Box2DWorldView::setBox2DWorld(sim_env::Box2DWorldPtr world) {
+void sim_env::viewer::Box2DWorldView::setBox2DWorld(sim_env::Box2DWorldPtr world)
+{
     _world = world;
     repopulate();
 }
 
-void sim_env::viewer::Box2DWorldView::repopulate() {
+void sim_env::viewer::Box2DWorldView::repopulate()
+{
     if (_world.expired()) {
         auto logger = DefaultLogger::getInstance();
         logger->logWarn("Could not repopulate Box2DWorldView. Box2DWorld is missing.",
-                        "[sim_env::viewer::Box2DWorldView]");
+            "[sim_env::viewer::Box2DWorldView]");
         return;
     }
     Box2DWorldPtr world = _world.lock();
@@ -1058,12 +1116,12 @@ void sim_env::viewer::Box2DWorldView::repopulate() {
         _robot_views.insert(std::make_pair(box2d_robot->getName(), robot_view));
     }
     // add a rectangle showing the world bounds
-    Eigen::VectorXf world_bounds = world->getWorldBounds();
-    QRectF qrect(world_bounds[0],
-                 world_bounds[1],
-                 world_bounds[2] - world_bounds[0],
-                 world_bounds[3] - world_bounds[1]);
-    _scene->addRect(qrect);
+    // Eigen::VectorXf world_bounds = world->getWorldBounds();
+    // QRectF qrect(world_bounds[0],
+    //     world_bounds[1],
+    //     world_bounds[2] - world_bounds[0],
+    //     world_bounds[3] - world_bounds[1]);
+    // _scene->addRect(qrect);
     if (not _refresh_timer) {
         _refresh_timer = new QTimer(this);
     }
@@ -1075,16 +1133,17 @@ void sim_env::viewer::Box2DWorldView::repopulate() {
     // TODO BUG sometimes objects aren't drawn until I zoom in and out again
 }
 
-sim_env::WorldViewer::Handle sim_env::viewer::Box2DWorldView::drawFrame(const Eigen::Affine3f& frame, float length, float width) {
+sim_env::WorldViewer::Handle sim_env::viewer::Box2DWorldView::drawFrame(const Eigen::Affine3f& frame, float length, float width)
+{
     QGraphicsItem* item = new Box2DFrameView(frame, length, width);
     return addDrawing(item);
 }
 
 sim_env::WorldViewer::Handle sim_env::viewer::Box2DWorldView::drawBox(const Eigen::Vector3f& pos,
-                                                                      const Eigen::Vector3f& extent,
-                                                                      const Eigen::Vector4f& color,
-                                                                      bool solid,
-                                                                      float edge_width)
+    const Eigen::Vector3f& extent,
+    const Eigen::Vector4f& color,
+    bool solid,
+    float edge_width)
 {
     QPen pen;
     pen.setWidthF(edge_width);
@@ -1098,24 +1157,25 @@ sim_env::WorldViewer::Handle sim_env::viewer::Box2DWorldView::drawBox(const Eige
     } else {
         brush.setStyle(Qt::BrushStyle::NoBrush);
     }
-    auto *rect = new QGraphicsRectItem(pos[0], pos[1], extent[0], extent[1]);
+    auto* rect = new QGraphicsRectItem(pos[0], pos[1], extent[0], extent[1]);
     rect->setBrush(brush);
     rect->setPen(pen);
     return addDrawing(rect);
 }
 
 sim_env::WorldViewer::Handle sim_env::viewer::Box2DWorldView::drawLine(const Eigen::Vector3f& start,
-                                                                       const Eigen::Vector3f& end,
-                                                                       const Eigen::Vector4f& color,
-                                                                       float width) {
+    const Eigen::Vector3f& end,
+    const Eigen::Vector4f& color,
+    float width)
+{
     QColor q_color;
-    q_color.setRgbF(color[0], color[1],color[2], color[3]);
+    q_color.setRgbF(color[0], color[1], color[2], color[3]);
     QPen pen;
     pen.setWidthF(width);
     pen.setColor(q_color);
     Eigen::Vector3f dummy_end(end);
     if ((start - end).norm() == 0.0f) {
-       dummy_end = end + Eigen::Vector3f(0.001f, 0.001f, 0.001f);
+        dummy_end = end + Eigen::Vector3f(0.001f, 0.001f, 0.001f);
     }
     auto* line = new QGraphicsLineItem(start[0], start[1], dummy_end[0], dummy_end[1]);
     line->setPen(pen);
@@ -1123,9 +1183,10 @@ sim_env::WorldViewer::Handle sim_env::viewer::Box2DWorldView::drawLine(const Eig
 }
 
 sim_env::WorldViewer::Handle sim_env::viewer::Box2DWorldView::drawCircle(const Eigen::Vector3f& center,
-                                                                         float radius,
-                                                                         const Eigen::Vector4f& color,
-                                                                         float width) {
+    float radius,
+    const Eigen::Vector4f& color,
+    float width)
+{
     QColor q_color;
     q_color.setRgbF(color[0], color[1], color[2], color[3]);
     QPen pen;
@@ -1154,7 +1215,7 @@ sim_env::WorldViewer::Handle sim_env::viewer::Box2DWorldView::drawVoxelGrid(
         pixmap_item = dynamic_cast<QGraphicsPixmapItem*>(drawings_iter->second);
         if (!pixmap_item) {
             logger->logErr("Could not reuse QGraphicsPixmapItem, because the provided handle refers to a different type of QGraphicsItem",
-                            log_prefix);
+                log_prefix);
         }
         if (pixmap_item->pixmap().width() != grid.getXSize()
             or pixmap_item->pixmap().height() != grid.getYSize()) {
@@ -1176,15 +1237,15 @@ sim_env::WorldViewer::Handle sim_env::viewer::Box2DWorldView::drawVoxelGrid(
         Eigen::Vector4f color_value = grid(idx);
         color_value *= 255;
         auto qt_color_value = qRgba((int)(color_value[0]), (int)(color_value[1]),
-                                    (int)(color_value[2]), (int)(color_value[3]));
+            (int)(color_value[2]), (int)(color_value[3]));
         image.setPixel(idx.ix, idx.iy, qt_color_value);
     }
     pixmap_item->setPixmap(QPixmap::fromImage(image));
     auto grid_tf = grid.getTransform();
     auto tf_matrix = grid_tf.matrix();
     QTransform qt_transform(tf_matrix(0, 0), tf_matrix(1, 0),
-                            tf_matrix(0, 1), tf_matrix(1, 1),
-                            tf_matrix(0, 3), tf_matrix(1, 3));
+        tf_matrix(0, 1), tf_matrix(1, 1),
+        tf_matrix(0, 3), tf_matrix(1, 3));
     pixmap_item->setTransform(qt_transform);
     Eigen::Vector3f min_point;
     Eigen::Vector3f max_point;
@@ -1193,6 +1254,50 @@ sim_env::WorldViewer::Handle sim_env::viewer::Box2DWorldView::drawVoxelGrid(
     pixmap_item->setOffset(QPointF(scale_inv * min_point[0], scale_inv * min_point[1]));
     pixmap_item->setScale(grid.getCellSize());
     return return_handle;
+}
+
+bool sim_env::viewer::Box2DWorldView::renderImage(const std::string& filename, unsigned int width, unsigned int height, bool include_drawings)
+{
+    // TODO we might have to lock here, not sure
+    std::vector<QGraphicsItem*> items_to_show;
+    if (not include_drawings) {
+        for (auto iter = _drawings.begin(); iter != _drawings.end(); ++iter) {
+            if (iter->second->isVisible()) {
+                items_to_show.push_back(iter->second);
+                iter->second->hide();
+            }
+        }
+    }
+    QImage image(width, height, QImage::Format_RGB32);
+    image.fill(QColor(255, 255, 255));
+    QPainter painter(&image);
+    render(&painter);
+    if (not include_drawings) {
+        for (auto item : items_to_show) {
+            item->setVisible(true);
+        }
+    }
+    return image.save(QString(filename.c_str()));
+}
+
+void sim_env::viewer::Box2DWorldView::centerCamera(bool include_drawings)
+{
+    QRectF bounding_rect;
+    for (auto iter = _object_views.begin(); iter != _object_views.end(); ++iter) {
+        auto item_rect = iter->second->sceneBoundingRect();
+        bounding_rect = bounding_rect.united(item_rect);
+    }
+    for (auto iter = _robot_views.begin(); iter != _robot_views.end(); ++iter) {
+        auto item_rect = iter->second->sceneBoundingRect();
+        bounding_rect = bounding_rect.united(item_rect);
+    }
+    if (include_drawings) {
+        for (auto iter = _drawings.begin(); iter != _drawings.end(); ++iter) {
+            auto item_rect = iter->second->sceneBoundingRect();
+            bounding_rect = bounding_rect.united(item_rect);
+        }
+    }
+    fitInView(bounding_rect, Qt::KeepAspectRatio);
 }
 
 void sim_env::viewer::Box2DWorldView::removeDrawing(const WorldViewer::Handle& handle)
@@ -1205,11 +1310,12 @@ void sim_env::viewer::Box2DWorldView::removeDrawing(const WorldViewer::Handle& h
     } else {
         sim_env::LoggerPtr logger = getLogger();
         logger->logWarn("Requested to remove drawing with invalid handle.",
-                        "[sim_env::viewer::Box2DWorldView::removeDrawing]");
+            "[sim_env::viewer::Box2DWorldView::removeDrawing]");
     }
 }
 
-void sim_env::viewer::Box2DWorldView::removeAllDrawings() {
+void sim_env::viewer::Box2DWorldView::removeAllDrawings()
+{
     std::lock_guard<std::recursive_mutex> lock(_mutex_modify_graphics_items);
     for (auto& entry : _drawings) {
         _items_to_remove.push(entry.second);
@@ -1217,17 +1323,19 @@ void sim_env::viewer::Box2DWorldView::removeAllDrawings() {
     _drawings.clear();
 }
 
-QSize sim_env::viewer::Box2DWorldView::sizeHint() const {
+QSize sim_env::viewer::Box2DWorldView::sizeHint() const
+{
     auto* parent = parentWidget();
     if (parent) {
         QSize parent_size = parent->size();
-        return {(int)(_rel_width * parent_size.width()),
-                (int)(_rel_height * parent_size.height())};
+        return { (int)(_rel_width * parent_size.width()),
+            (int)(_rel_height * parent_size.height()) };
     }
-    return {_width, _height};
+    return { _width, _height };
 }
 
-void sim_env::viewer::Box2DWorldView::setColor(const std::string& name, float r, float g, float b) {
+void sim_env::viewer::Box2DWorldView::setColor(const std::string& name, float r, float g, float b)
+{
     auto iter = _object_views.find(name);
     if (iter != _object_views.end()) {
         iter->second->setColor(r, g, b);
@@ -1239,12 +1347,13 @@ void sim_env::viewer::Box2DWorldView::setColor(const std::string& name, float r,
             // TODO error message using world logger
             auto logger = sim_env::DefaultLogger::getInstance();
             logger->logErr("Could not set color for object " + name + " because it was not found",
-                           "[sim_env::viewer::Box2DWorldView::setColor]");
+                "[sim_env::viewer::Box2DWorldView::setColor]");
         }
     }
 }
 
-void sim_env::viewer::Box2DWorldView::resetColor(const std::string& name) {
+void sim_env::viewer::Box2DWorldView::resetColor(const std::string& name)
+{
     auto iter = _object_views.find(name);
     if (iter != _object_views.end()) {
         iter->second->resetColor();
@@ -1256,12 +1365,13 @@ void sim_env::viewer::Box2DWorldView::resetColor(const std::string& name) {
             // TODO error message using world logger
             auto logger = sim_env::DefaultLogger::getInstance();
             logger->logErr("Could not reset color for object " + name + " because it was not found",
-                           "[sim_env::viewer::Box2DWorldView::resetColor]");
+                "[sim_env::viewer::Box2DWorldView::resetColor]");
         }
     }
 }
 
-void sim_env::viewer::Box2DWorldView::wheelEvent(QWheelEvent *event) {
+void sim_env::viewer::Box2DWorldView::wheelEvent(QWheelEvent* event)
+{
     // TODO limit total scene size somhow to bounding box (i.e. we do not want the scrollbars to show
     // TODO when we see all object
     if (event->modifiers() & Qt::ControlModifier) { // if the ctrl key is pressed
@@ -1272,9 +1382,10 @@ void sim_env::viewer::Box2DWorldView::wheelEvent(QWheelEvent *event) {
     }
 }
 
-void sim_env::viewer::Box2DWorldView::refreshView() {
-//    auto logger = DefaultLogger::getInstance();
-//    logger->logDebug("REFRESHING WORLD VIEW");
+void sim_env::viewer::Box2DWorldView::refreshView()
+{
+    //    auto logger = DefaultLogger::getInstance();
+    //    logger->logDebug("REFRESHING WORLD VIEW");
     // first add new items to the scene if we have any
     std::lock_guard<std::recursive_mutex> lock(_mutex_modify_graphics_items);
     while (not _items_to_add.empty()) {
@@ -1293,12 +1404,14 @@ void sim_env::viewer::Box2DWorldView::refreshView() {
     emit refreshTick();
 }
 
-void sim_env::viewer::Box2DWorldView::setSelectedObject(sim_env::ObjectWeakPtr object) {
+void sim_env::viewer::Box2DWorldView::setSelectedObject(sim_env::ObjectWeakPtr object)
+{
     _currently_selected_object = object;
     emit objectSelected(_currently_selected_object);
 }
 
-void sim_env::viewer::Box2DWorldView::scaleView(double scale_factor) {
+void sim_env::viewer::Box2DWorldView::scaleView(double scale_factor)
+{
     // this is from a qt example
     qreal factor = transform().scale(scale_factor, scale_factor).mapRect(QRectF(0, 0, 1, 1)).width();
     // TODO this is the width of a unit cube when zoomed. See whether these numbers should be dependent on sth
@@ -1308,7 +1421,8 @@ void sim_env::viewer::Box2DWorldView::scaleView(double scale_factor) {
     scale(scale_factor, scale_factor);
 }
 
-sim_env::WorldViewer::Handle sim_env::viewer::Box2DWorldView::addDrawing(QGraphicsItem* item) {
+sim_env::WorldViewer::Handle sim_env::viewer::Box2DWorldView::addDrawing(QGraphicsItem* item)
+{
     sim_env::WorldViewer::Handle handle;
     std::lock_guard<std::recursive_mutex> rm_lock(_mutex_modify_graphics_items);
     // force drawings to be in the back
@@ -1328,22 +1442,26 @@ sim_env::LoggerPtr sim_env::viewer::Box2DWorldView::getLogger() const
     }
 }
 /////////////////////////////////// Box2DSimulationController ///////////////////////////////////
-sim_env::viewer::Box2DSimulationController::Box2DSimulationController(Box2DWorldPtr world) {
+sim_env::viewer::Box2DSimulationController::Box2DSimulationController(Box2DWorldPtr world)
+{
     _simulation_thread.is_running = false;
     _simulation_thread.world = world;
 }
 
-sim_env::viewer::Box2DSimulationController::~Box2DSimulationController() {
+sim_env::viewer::Box2DSimulationController::~Box2DSimulationController()
+{
     // TODO there is crash happening here
     terminateThread();
 }
 
-void sim_env::viewer::Box2DSimulationController::terminateThread() {
+void sim_env::viewer::Box2DSimulationController::terminateThread()
+{
     _simulation_thread.is_running = false;
     _simulation_thread.simulation_thread.join();
 }
 
-void sim_env::viewer::Box2DSimulationController::startSimulation() {
+void sim_env::viewer::Box2DSimulationController::startSimulation()
+{
     auto logger = DefaultLogger::getInstance();
     logger->logDebug("starting simulation");
     if (_simulation_thread.is_running) {
@@ -1353,13 +1471,15 @@ void sim_env::viewer::Box2DSimulationController::startSimulation() {
     _simulation_thread.simulation_thread = std::thread(&SimulationThread::run, std::ref(_simulation_thread));
 }
 
-void sim_env::viewer::Box2DSimulationController::stopSimulation() {
+void sim_env::viewer::Box2DSimulationController::stopSimulation()
+{
     auto logger = DefaultLogger::getInstance();
     logger->logDebug("stopping simulation");
     terminateThread();
 }
 
-void sim_env::viewer::Box2DSimulationController::triggerSimulation(bool run) {
+void sim_env::viewer::Box2DSimulationController::triggerSimulation(bool run)
+{
     if (run) {
         startSimulation();
     } else {
@@ -1367,7 +1487,8 @@ void sim_env::viewer::Box2DSimulationController::triggerSimulation(bool run) {
     }
 }
 
-void sim_env::viewer::Box2DSimulationController::SimulationThread::run() {
+void sim_env::viewer::Box2DSimulationController::SimulationThread::run()
+{
     while (is_running) {
         if (world.expired()) {
             is_running = false;
@@ -1381,18 +1502,21 @@ void sim_env::viewer::Box2DSimulationController::SimulationThread::run() {
 }
 
 //////////////////////////////////////// Box2DWorldViewer ////////////////////////////////////////
-sim_env::Box2DWorldViewer::Box2DWorldViewer(sim_env::Box2DWorldPtr world) {
+sim_env::Box2DWorldViewer::Box2DWorldViewer(sim_env::Box2DWorldPtr world)
+{
     _world = std::weak_ptr<sim_env::Box2DWorld>(world);
     _argv = nullptr;
     _argc = 0;
     _is_showing = false;
 }
 
-sim_env::Box2DWorldViewer::~Box2DWorldViewer() {
+sim_env::Box2DWorldViewer::~Box2DWorldViewer()
+{
     deleteArgs();
 }
 
-void sim_env::Box2DWorldViewer::deleteArgs() {
+void sim_env::Box2DWorldViewer::deleteArgs()
+{
     for (int i = 0; i < _argc; ++i) {
         delete[] _argv[i];
     }
@@ -1401,7 +1525,8 @@ void sim_env::Box2DWorldViewer::deleteArgs() {
     _argc = 0;
 }
 
-void sim_env::Box2DWorldViewer::show(int argc, const char* const* argv) {
+void sim_env::Box2DWorldViewer::show(int argc, const char* const* argv)
+{
     if (_is_showing) {
         return;
     }
@@ -1422,7 +1547,8 @@ void sim_env::Box2DWorldViewer::show(int argc, const char* const* argv) {
     _is_showing = true;
 }
 
-int sim_env::Box2DWorldViewer::run() {
+int sim_env::Box2DWorldViewer::run()
+{
     if (!_app) {
         throw std::logic_error("[Box2DWorldViewer::run] Called run before setting up the application.");
     }
@@ -1430,51 +1556,69 @@ int sim_env::Box2DWorldViewer::run() {
     return _app->exec();
 }
 
-sim_env::WorldViewer::Handle sim_env::Box2DWorldViewer::drawFrame(const Eigen::Affine3f &transform, float length, float width) {
+sim_env::WorldViewer::Handle sim_env::Box2DWorldViewer::drawFrame(const Eigen::Affine3f& transform, float length, float width)
+{
     return _world_view->drawFrame(transform, length, width);
 }
 
-sim_env::WorldViewer::Handle sim_env::Box2DWorldViewer::drawBox(const Eigen::Vector3f &pos,
-                                                                const Eigen::Vector3f &extent,
-                                                                const Eigen::Vector4f &color,
-                                                                bool solid,
-                                                                float edge_width) {
+sim_env::WorldViewer::Handle sim_env::Box2DWorldViewer::drawBox(const Eigen::Vector3f& pos,
+    const Eigen::Vector3f& extent,
+    const Eigen::Vector4f& color,
+    bool solid,
+    float edge_width)
+{
     return _world_view->drawBox(pos, extent, color, solid, edge_width);
 }
 
 sim_env::WorldViewer::Handle sim_env::Box2DWorldViewer::drawLine(const Eigen::Vector3f& start,
-                                                                 const Eigen::Vector3f& end,
-                                                                 const Eigen::Vector4f& color,
-                                                                 float width) {
+    const Eigen::Vector3f& end,
+    const Eigen::Vector4f& color,
+    float width)
+{
     return _world_view->drawLine(start, end, color, width);
 }
 sim_env::WorldViewer::Handle sim_env::Box2DWorldViewer::drawSphere(const Eigen::Vector3f& center, float radius,
-                                                                   const Eigen::Vector4f& color,
-                                                                   float width) {
+    const Eigen::Vector4f& color,
+    float width)
+{
     return _world_view->drawCircle(center, radius, color, width);
 }
 
 sim_env::WorldViewer::Handle sim_env::Box2DWorldViewer::drawVoxelGrid(const grid::VoxelGrid<float, Eigen::Vector4f>& grid,
-        const WorldViewer::Handle& old_handle)
+    const WorldViewer::Handle& old_handle)
 {
     return _world_view->drawVoxelGrid(grid, old_handle);
 }
 
-sim_env::WorldPtr sim_env::Box2DWorldViewer::getWorld() const {
+bool sim_env::Box2DWorldViewer::renderImage(const std::string& filename, unsigned int width, unsigned int height,
+    bool include_drawings)
+{
+    return _world_view->renderImage(filename, width, height, include_drawings);
+}
+
+void sim_env::Box2DWorldViewer::centerCamera(bool include_drawings)
+{
+    _world_view->centerCamera(include_drawings);
+}
+
+sim_env::WorldPtr sim_env::Box2DWorldViewer::getWorld() const
+{
     return _world.lock();
 }
 
-void sim_env::Box2DWorldViewer::removeDrawing(const sim_env::WorldViewer::Handle &handle)
+void sim_env::Box2DWorldViewer::removeDrawing(const sim_env::WorldViewer::Handle& handle)
 {
     _world_view->removeDrawing(handle);
 }
 
-void sim_env::Box2DWorldViewer::removeAllDrawings() {
+void sim_env::Box2DWorldViewer::removeAllDrawings()
+{
     _world_view->removeAllDrawings();
 }
 
-void sim_env::Box2DWorldViewer::log(const std::string &msg, const std::string& prefix,
-                                    Logger::LogLevel level) const {
+void sim_env::Box2DWorldViewer::log(const std::string& msg, const std::string& prefix,
+    Logger::LogLevel level) const
+{
     if (_world.expired()) {
         auto logger = DefaultLogger::getInstance();
         logger->log(msg, level, prefix);
@@ -1483,7 +1627,8 @@ void sim_env::Box2DWorldViewer::log(const std::string &msg, const std::string& p
     locked_world->getLogger()->logInfo(msg, prefix);
 }
 
-void sim_env::Box2DWorldViewer::createUI() {
+void sim_env::Box2DWorldViewer::createUI()
+{
     // We are using raw pointers here, but Qt takes care of deleting these
     _root_widget.reset(new QWidget());
     QVBoxLayout* root_layout = new QVBoxLayout();
@@ -1512,7 +1657,8 @@ void sim_env::Box2DWorldViewer::createUI() {
     _root_widget->setLayout(root_layout);
 }
 
-void sim_env::Box2DWorldViewer::createBottomBar() {
+void sim_env::Box2DWorldViewer::createBottomBar()
+{
     _bottom_tab_widget = new QTabWidget(_root_widget.get());
     // build simulation control view
     QGroupBox* simulation_control_view = new QGroupBox("Dynamics model control");
@@ -1526,30 +1672,31 @@ void sim_env::Box2DWorldViewer::createBottomBar() {
     // create robot controller view
     viewer::Box2DControllerView* robot_control_view = new viewer::Box2DControllerView();
     QObject::connect(_world_view, SIGNAL(objectSelected(sim_env::ObjectWeakPtr)),
-                     robot_control_view, SLOT(setCurrentObject(sim_env::ObjectWeakPtr)));
+        robot_control_view, SLOT(setCurrentObject(sim_env::ObjectWeakPtr)));
     _bottom_tab_widget->addTab(robot_control_view, "Robot control");
     _bottom_tab_widget->setMaximumSize(1980, 300);
 }
 
-QWidget* sim_env::Box2DWorldViewer::createSideBar() {
+QWidget* sim_env::Box2DWorldViewer::createSideBar()
+{
     // TODO Unfortunately this doesn't work with a scroll area (the layout can not be changed on the fly)
     // QScrollArea* scroll_view = new QScrollArea();
     auto* state_view = new viewer::Box2DObjectStateView();
     QObject::connect(_world_view, SIGNAL(objectSelected(sim_env::ObjectWeakPtr)),
-            state_view, SLOT(setCurrentObject(sim_env::ObjectWeakPtr)));
+        state_view, SLOT(setCurrentObject(sim_env::ObjectWeakPtr)));
     QObject::connect(state_view, SIGNAL(newUserState()), _world_view,
-              SLOT(refreshView()));
+        SLOT(refreshView()));
     QObject::connect(_world_view, SIGNAL(refreshTick()), state_view, SLOT(stateUpdate()));
     state_view->setMaximumSize(200, 1080);
     return state_view;
 }
 
-void sim_env::Box2DWorldViewer::addCustomWidget(QWidget *widget, const std::string& name) {
+void sim_env::Box2DWorldViewer::addCustomWidget(QWidget* widget, const std::string& name)
+{
     _bottom_tab_widget->addTab(widget, name.c_str());
 }
 
-sim_env::viewer::Box2DWorldView* sim_env::Box2DWorldViewer::getWorldViewer() {
+sim_env::viewer::Box2DWorldView* sim_env::Box2DWorldViewer::getWorldViewer()
+{
     return _world_view;
 }
-
-

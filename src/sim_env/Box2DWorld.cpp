@@ -120,7 +120,8 @@ Box2DLink::Box2DLink(const Box2DLinkDescription &link_desc, Box2DWorldPtr world,
 
 Box2DLink::~Box2DLink() {
     if (!_destroyed) {
-        throw std::logic_error("[Box2DLink::~Box2DLink] Destructor called without prior object destruction.");
+        auto logger = DefaultLogger::getInstance();
+        logger->logErr("[Box2DLink::~Box2DLink] Destructor called without prior object destruction.");
     }
 }
 
@@ -746,7 +747,8 @@ Box2DJoint::Box2DJoint(const Box2DJointDescription &joint_desc, Box2DLinkPtr lin
 
 Box2DJoint::~Box2DJoint() {
     if (!_destroyed) {
-        throw std::logic_error("[Box2DJoint::~Box2DJoint] Destructor called without prior object destruction.");
+        auto logger = DefaultLogger::getInstance();
+        logger->logErr("[Box2DJoint::~Box2DJoint] Destructor called without prior object destruction.");
     }
 }
 
@@ -1120,7 +1122,8 @@ Box2DObject::Box2DObject(const Box2DObjectDescription &obj_desc, Box2DWorldPtr w
 
 Box2DObject::~Box2DObject() {
     if (!_destroyed) {
-        throw std::logic_error("[Box2DObject::~Box2DObject] Object destructor called before destroy()");
+        auto logger = DefaultLogger::getInstance();
+        logger->logErr("[Box2DObject::~Box2DObject] Object destructor called before destroy()");
     }
 }
 
@@ -1737,7 +1740,8 @@ Box2DRobot::Box2DRobot(const Box2DRobotDescription &robot_desc, Box2DWorldPtr wo
 
 Box2DRobot::~Box2DRobot() {
     if (not _destroyed) {
-        throw std::logic_error("[Box2DRobot::~Box2DRobot] Object destructor called before destroy()");
+        auto logger = DefaultLogger::getInstance();
+        logger->logErr("[Box2DRobot::~Box2DRobot] Object destructor called before destroy()");
     }
 }
 
