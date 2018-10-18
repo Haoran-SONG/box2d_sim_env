@@ -1116,12 +1116,12 @@ void sim_env::viewer::Box2DWorldView::repopulate()
         _robot_views.insert(std::make_pair(box2d_robot->getName(), robot_view));
     }
     // add a rectangle showing the world bounds
-    // Eigen::VectorXf world_bounds = world->getWorldBounds();
-    // QRectF qrect(world_bounds[0],
-    //     world_bounds[1],
-    //     world_bounds[2] - world_bounds[0],
-    //     world_bounds[3] - world_bounds[1]);
-    // _scene->addRect(qrect);
+    Eigen::VectorXf world_bounds = world->getWorldBounds();
+    Eigen::Vector3f pos(world_bounds[0], world_bounds[1], 0);
+    Eigen::Vector3f extents(world_bounds[2] - world_bounds[0], world_bounds[3] - world_bounds[1], 0);
+    // TODO the thickness here shouldn't be hardcoded
+    _world_bounds_handle = drawBox(pos, extents, Eigen::Vector4f(0, 0, 0, 1.0f), false, 0.004);
+    _world_bounds.setRect(pos[0], pos[1], extents[0], extents[1]);
     if (not _refresh_timer) {
         _refresh_timer = new QTimer(this);
     }
@@ -1270,13 +1270,17 @@ bool sim_env::viewer::Box2DWorldView::renderImage(const std::string& filename, u
     }
     QImage image(width, height, QImage::Format_RGB32);
     image.fill(QColor(255, 255, 255));
-    QPainter painter(&image);
-    render(&painter);
-    if (not include_drawings) {
-        for (auto item : items_to_show) {
-            item->setVisible(true);
+    { // score so that QPainter is destroyed again
+        QPainter painter(&image);
+        _scene->render(&painter, QRectF(), _world_bounds);
+        if (not include_drawings) {
+            for (auto item : items_to_show) {
+                item->setVisible(true);
+            }
         }
     }
+    // qt has it's y axis pointing downwards, so let's revert that axis
+    image = image.mirrored();
     return image.save(QString(filename.c_str()));
 }
 
@@ -1298,6 +1302,20 @@ void sim_env::viewer::Box2DWorldView::centerCamera(bool include_drawings)
         }
     }
     fitInView(bounding_rect, Qt::KeepAspectRatio);
+}
+
+void sim_env::viewer::Box2DWorldView::resetCamera()
+{
+    auto iter = _drawings.find(_world_bounds_handle.getID());
+    auto logger = getLogger();
+    if (iter != _drawings.end()) {
+        auto bounding_box = _drawings[_world_bounds_handle.getID()]->sceneBoundingRect();
+        fitInView(bounding_box, Qt::KeepAspectRatio);
+        logger->logInfo("Reset camera");
+    } else {
+        logger->logErr("Could not reset camera view. Bounding box drawing does not exist.",
+            "sim_env::Viewer::Box2DWorldView::resetCamera");
+    }
 }
 
 void sim_env::viewer::Box2DWorldView::removeDrawing(const WorldViewer::Handle& handle)
@@ -1368,6 +1386,12 @@ void sim_env::viewer::Box2DWorldView::resetColor(const std::string& name)
                 "[sim_env::viewer::Box2DWorldView::resetColor]");
         }
     }
+}
+
+void sim_env::viewer::Box2DWorldView::setRelativeSize(float width, float height)
+{
+    _rel_height = height;
+    _rel_width = width;
 }
 
 void sim_env::viewer::Box2DWorldView::wheelEvent(QWheelEvent* event)
@@ -1513,6 +1537,9 @@ sim_env::Box2DWorldViewer::Box2DWorldViewer(sim_env::Box2DWorldPtr world)
 sim_env::Box2DWorldViewer::~Box2DWorldViewer()
 {
     deleteArgs();
+    if (!_is_showing) {
+        delete _world_view;
+    } // else it is deleted by Qt
 }
 
 void sim_env::Box2DWorldViewer::deleteArgs()
@@ -1525,11 +1552,8 @@ void sim_env::Box2DWorldViewer::deleteArgs()
     _argc = 0;
 }
 
-void sim_env::Box2DWorldViewer::show(int argc, const char* const* argv)
+void sim_env::Box2DWorldViewer::init(int argc, const char* const* argv)
 {
-    if (_is_showing) {
-        return;
-    }
     // Qt requires the parameters argc and argv to exist as long as the application exists
     // so let's copy them
     _app.reset(nullptr);
@@ -1542,6 +1566,20 @@ void sim_env::Box2DWorldViewer::show(int argc, const char* const* argv)
         std::strcpy(_argv[i], argv[i]);
     }
     _app = std::unique_ptr<QApplication>(new QApplication(_argc, _argv));
+    // create the world view here, so we can also render without showing the GUI
+    if (!_world.expired()) {
+        _world_view = new viewer::Box2DWorldView(1.0f, 1.0f);
+        _world_view->setBox2DWorld(_world.lock());
+    } else {
+        throw std::logic_error("Box2D world does not exist.");
+    }
+}
+
+void sim_env::Box2DWorldViewer::show()
+{
+    if (_is_showing) {
+        return;
+    }
     createUI();
     _root_widget->show();
     _is_showing = true;
@@ -1601,6 +1639,11 @@ void sim_env::Box2DWorldViewer::centerCamera(bool include_drawings)
     _world_view->centerCamera(include_drawings);
 }
 
+void sim_env::Box2DWorldViewer::resetCamera()
+{
+    _world_view->resetCamera();
+}
+
 sim_env::WorldPtr sim_env::Box2DWorldViewer::getWorld() const
 {
     return _world.lock();
@@ -1636,9 +1679,10 @@ void sim_env::Box2DWorldViewer::createUI()
     QWidget* container = new QWidget();
     QHBoxLayout* container_layout = new QHBoxLayout();
     // the container shall contain our world view
-    _world_view = new viewer::Box2DWorldView(0.8f, 0.8f);
+    // _world_view = new viewer::Box2DWorldView(0.8f, 0.8f);
+    _world_view->setRelativeSize(0.8f, 0.8f);
     if (!_world.expired()) {
-        _world_view->setBox2DWorld(_world.lock());
+        // _world_view->setBox2DWorld(_world.lock());
         _simulation_controller = std::unique_ptr<viewer::Box2DSimulationController>(new viewer::Box2DSimulationController(_world.lock()));
     } else {
         throw std::logic_error("[sim_env::Box2DWorldViewer::createUI] Attempted to create a view on a non-existant Box2D world");

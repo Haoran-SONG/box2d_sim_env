@@ -250,11 +250,13 @@ namespace viewer {
             const WorldViewer::Handle& old_handle);
         bool renderImage(const std::string& filename, unsigned int width, unsigned int height, bool include_drawings);
         void centerCamera(bool include_drawings);
+        void resetCamera();
         void removeDrawing(const WorldViewer::Handle& handle);
         void removeAllDrawings();
         QSize sizeHint() const override;
         void setColor(const std::string& name, float r, float g, float b);
         void resetColor(const std::string& name);
+        void setRelativeSize(float width, float height);
 
     public slots:
         void refreshView();
@@ -270,6 +272,7 @@ namespace viewer {
         LoggerPtr getLogger() const;
         // Variables
         QGraphicsScene* _scene;
+        QRectF _world_bounds;
         QTimer* _refresh_timer;
         int _width;
         int _height;
@@ -284,6 +287,7 @@ namespace viewer {
         std::recursive_mutex _mutex_modify_graphics_items;
         std::queue<QGraphicsItem*> _items_to_add;
         std::queue<QGraphicsItem*> _items_to_remove;
+        WorldViewer::Handle _world_bounds_handle;
     };
 
     class Box2DSimulationController : public QObject {
@@ -322,11 +326,15 @@ public:
     int run();
 
     /**
-         * Creates a Qt Application and shows the visualizer.
+         * Creates a Qt Application - must be called before anything else can be done!
          * @param argc - number of arguments stored in argv
          * @param argv - pointer to array of c-style strings. These parameters are forwarded to QApplication.
          */
-    void show(int argc = 0, const char* const* argv = nullptr);
+    void init(int argc = 0, const char* const* argv = nullptr);
+    /**
+     *  Show the actual GUI.
+     */
+    void show();
     Handle drawFrame(const Eigen::Affine3f& transform,
         float length = 1.0f,
         float width = 0.01f) override;
@@ -352,6 +360,7 @@ public:
         const WorldViewer::Handle& old_handle) override;
     bool renderImage(const std::string& filename, unsigned int width, unsigned int height, bool include_drawings = false) override;
     void centerCamera(bool include_drawings = false) override;
+    void resetCamera() override;
     WorldPtr getWorld() const override;
     void removeDrawing(const Handle& handle) override;
     void removeAllDrawings() override;

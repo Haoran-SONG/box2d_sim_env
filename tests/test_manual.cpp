@@ -2,7 +2,7 @@
 // Created by joshua on 6/21/17.
 //
 
-#include"sim_env/Box2DWorld.h"
+#include "sim_env/Box2DWorld.h"
 #include <QApplication>
 #include <QPushButton>
 #include <sim_env/Box2DWorldViewer.h>
@@ -33,7 +33,8 @@
 //    logger->logDebug("This should not be printed.");
 //}
 
-int main(int argc, char **argv) {
+int main(int argc, char** argv)
+{
     sim_env::Box2DWorldPtr world = std::make_shared<sim_env::Box2DWorld>();
     world->getLogger()->setLevel(sim_env::Logger::LogLevel::Debug);
     world->loadWorld("/home/joshua/projects/planning_catkin/src/planner_tests/data/box2d/worlds/door_world_2m_3s.yaml");
@@ -44,9 +45,9 @@ int main(int argc, char **argv) {
     std::stringstream ss;
     ss << new_vel.transpose();
     sim_env::Box2DWorldViewerPtr world_viewer = std::make_shared<sim_env::Box2DWorldViewer>(world);
-    world_viewer->show(argc, argv);
+    world_viewer->init(argc, argv);
+    world_viewer->show();
     auto robot_transform = robot->getTransform();
     world_viewer->drawFrame(robot_transform);
     return world_viewer->run();
 }
-
