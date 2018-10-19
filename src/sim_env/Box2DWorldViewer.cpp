@@ -1124,13 +1124,19 @@ void sim_env::viewer::Box2DWorldView::repopulate()
     _world_bounds.setRect(pos[0], pos[1], extents[0], extents[1]);
     if (not _refresh_timer) {
         _refresh_timer = new QTimer(this);
+        connect(_refresh_timer, SIGNAL(timeout()), this, SLOT(refreshView()));
+        _refresh_timer->setSingleShot(false);
     }
+}
+
+void sim_env::viewer::Box2DWorldView::showEvent(QShowEvent* event)
+{
     // TODO we probably don't need this. Instead only force redraws during propagation demo
     // TODO and when modifications on the model occurred.
-    connect(_refresh_timer, SIGNAL(timeout()), this, SLOT(refreshView()));
-    _refresh_timer->setSingleShot(false);
-    _refresh_timer->start(40); // 25Hz
     // TODO BUG sometimes objects aren't drawn until I zoom in and out again
+    if (!_refresh_timer->isActive()) {
+        _refresh_timer->start(40); //25Hz
+    }
 }
 
 sim_env::WorldViewer::Handle sim_env::viewer::Box2DWorldView::drawFrame(const Eigen::Affine3f& frame, float length, float width)
@@ -1258,7 +1264,8 @@ sim_env::WorldViewer::Handle sim_env::viewer::Box2DWorldView::drawVoxelGrid(
 
 bool sim_env::viewer::Box2DWorldView::renderImage(const std::string& filename, unsigned int width, unsigned int height, bool include_drawings)
 {
-    // TODO we might have to lock here, not sure
+    std::lock_guard<std::recursive_mutex> lock(_mutex_modify_graphics_items);
+    synchronizeScene();
     std::vector<QGraphicsItem*> items_to_show;
     if (not include_drawings) {
         for (auto iter = _drawings.begin(); iter != _drawings.end(); ++iter) {
@@ -1362,8 +1369,7 @@ void sim_env::viewer::Box2DWorldView::setColor(const std::string& name, float r,
         if (iter2 != _robot_views.end()) {
             iter2->second->setColor(r, g, b);
         } else {
-            // TODO error message using world logger
-            auto logger = sim_env::DefaultLogger::getInstance();
+            auto logger = getLogger();
             logger->logErr("Could not set color for object " + name + " because it was not found",
                 "[sim_env::viewer::Box2DWorldView::setColor]");
         }
@@ -1380,10 +1386,26 @@ void sim_env::viewer::Box2DWorldView::resetColor(const std::string& name)
         if (iter2 != _robot_views.end()) {
             iter2->second->resetColor();
         } else {
-            // TODO error message using world logger
-            auto logger = sim_env::DefaultLogger::getInstance();
+            auto logger = getLogger();
             logger->logErr("Could not reset color for object " + name + " because it was not found",
                 "[sim_env::viewer::Box2DWorldView::resetColor]");
+        }
+    }
+}
+
+void sim_env::viewer::Box2DWorldView::setObjectVisible(const std::string& name, bool visible)
+{
+    auto iter = _object_views.find(name);
+    if (iter != _object_views.end()) {
+        iter->second->setVisible(visible);
+    } else {
+        auto iter2 = _robot_views.find(name);
+        if (iter2 != _robot_views.end()) {
+            iter2->second->setVisible(visible);
+        } else {
+            auto logger = getLogger();
+            logger->logErr("Could not set visibility of object " + name + ", because it was not found",
+                "[sim_env::viewer::Box2DWorldView::setVisible]");
         }
     }
 }
@@ -1410,20 +1432,7 @@ void sim_env::viewer::Box2DWorldView::refreshView()
 {
     //    auto logger = DefaultLogger::getInstance();
     //    logger->logDebug("REFRESHING WORLD VIEW");
-    // first add new items to the scene if we have any
-    std::lock_guard<std::recursive_mutex> lock(_mutex_modify_graphics_items);
-    while (not _items_to_add.empty()) {
-        _scene->addItem(_items_to_add.front());
-        _items_to_add.pop();
-    }
-    // next remove items from the scene if there were requests
-    while (not _items_to_remove.empty()) {
-        QGraphicsItem* item = _items_to_remove.front();
-        _scene->removeItem(item);
-        delete item;
-        _items_to_remove.pop();
-    }
-    _scene->update();
+    synchronizeScene();
     update();
     emit refreshTick();
 }
@@ -1454,6 +1463,24 @@ sim_env::WorldViewer::Handle sim_env::viewer::Box2DWorldView::addDrawing(QGraphi
     _items_to_add.push(item);
     _drawings[handle.getID()] = item;
     return handle;
+}
+
+void sim_env::viewer::Box2DWorldView::synchronizeScene()
+{
+    // first add new items to the scene if we have any
+    std::lock_guard<std::recursive_mutex> lock(_mutex_modify_graphics_items);
+    while (not _items_to_add.empty()) {
+        _scene->addItem(_items_to_add.front());
+        _items_to_add.pop();
+    }
+    // next remove items from the scene if there were requests
+    while (not _items_to_remove.empty()) {
+        QGraphicsItem* item = _items_to_remove.front();
+        _scene->removeItem(item);
+        delete item;
+        _items_to_remove.pop();
+    }
+    _scene->update();
 }
 
 sim_env::LoggerPtr sim_env::viewer::Box2DWorldView::getLogger() const
@@ -1583,6 +1610,7 @@ void sim_env::Box2DWorldViewer::show()
     createUI();
     _root_widget->show();
     _is_showing = true;
+    _world_view->show();
 }
 
 int sim_env::Box2DWorldViewer::run()
@@ -1733,6 +1761,11 @@ QWidget* sim_env::Box2DWorldViewer::createSideBar()
     QObject::connect(_world_view, SIGNAL(refreshTick()), state_view, SLOT(stateUpdate()));
     state_view->setMaximumSize(200, 1080);
     return state_view;
+}
+
+void sim_env::Box2DWorldViewer::setVisible(const std::string& name, bool visible)
+{
+    _world_view->setObjectVisible(name, visible);
 }
 
 void sim_env::Box2DWorldViewer::addCustomWidget(QWidget* widget, const std::string& name)

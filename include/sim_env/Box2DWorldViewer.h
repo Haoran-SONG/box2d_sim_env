@@ -227,6 +227,8 @@ namespace viewer {
              * set Box2D world.
              */
         void repopulate();
+        // call when the view is actually shown on the screen
+        void showEvent(QShowEvent* event) override;
         WorldViewer::Handle drawFrame(const Eigen::Affine3f& frame, float length = 1.0f, float width = 0.01f);
         WorldViewer::Handle drawBox(const Eigen::Vector3f& pos,
             const Eigen::Vector3f& extent,
@@ -256,6 +258,7 @@ namespace viewer {
         QSize sizeHint() const override;
         void setColor(const std::string& name, float r, float g, float b);
         void resetColor(const std::string& name);
+        void setObjectVisible(const std::string& name, bool visible);
         void setRelativeSize(float width, float height);
 
     public slots:
@@ -269,6 +272,7 @@ namespace viewer {
         void wheelEvent(QWheelEvent* event) override;
         void scaleView(double scale_factor);
         WorldViewer::Handle addDrawing(QGraphicsItem* item);
+        void synchronizeScene();
         LoggerPtr getLogger() const;
         // Variables
         QGraphicsScene* _scene;
@@ -364,6 +368,7 @@ public:
     WorldPtr getWorld() const override;
     void removeDrawing(const Handle& handle) override;
     void removeAllDrawings() override;
+    void setVisible(const std::string& name, bool visible) override;
     void addCustomWidget(QWidget* widget, const std::string& name);
     viewer::Box2DWorldView* getWorldViewer();
 
