@@ -257,6 +257,8 @@ namespace viewer {
         void removeAllDrawings();
         QSize sizeHint() const override;
         void setColor(const std::string& name, float r, float g, float b);
+        void randomSceneColor(const std::map<std::string, unsigned int> sorting_groups,
+                              float group_colors[][3], const int num_colors);
         void resetColor(const std::string& name);
         void setObjectVisible(const std::string& name, bool visible);
         void setRelativeSize(float width, float height);

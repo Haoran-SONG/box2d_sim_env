@@ -1359,6 +1359,31 @@ QSize sim_env::viewer::Box2DWorldView::sizeHint() const
     return { _width, _height };
 }
 
+void sim_env::viewer::Box2DWorldView::randomSceneColor(const std::map<std::string, unsigned int> sorting_groups,
+                                                       float group_colors[][3], const int num_colors)
+{
+    auto logger = getLogger();
+    int obj_num = (int) sorting_groups.size() - 1;
+    int num_classes = (int) floor(obj_num/2);
+    if (num_classes < 2){
+        num_classes = 2;
+    } else if (num_classes > num_colors){
+        num_classes = num_colors;
+    }
+    // Random int generator;
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::uniform_int_distribution<> dis(1,num_classes);
+    int idx;
+    // Rendering each object;
+    for (auto& elem: sorting_groups) {
+        if (elem.second!=0){
+            idx = dis(gen);
+            setColor(elem.first, group_colors[idx][0], group_colors[idx][1], group_colors[idx][2]);
+        }
+    }
+}
+
 void sim_env::viewer::Box2DWorldView::setColor(const std::string& name, float r, float g, float b)
 {
     auto iter = _object_views.find(name);
