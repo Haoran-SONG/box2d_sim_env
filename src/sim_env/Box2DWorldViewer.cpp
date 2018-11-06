@@ -306,6 +306,15 @@ void sim_env::viewer::Box2DLinkView::paint(QPainter* painter, const QStyleOption
     // now draw
     const QBrush original_brush = painter->brush();
     const QPen original_pen = painter->pen();
+    // set it semi-transparent in case its inactive
+    if (link->isEnabled()) {
+        _fill_color.setAlphaF(1.0f);
+        _border_color.setAlphaF(1.0f);
+    } else {
+        _fill_color.setAlphaF(0.2f);
+        _border_color.setAlphaF(0.2f);
+    }
+
     QBrush my_brush;
     my_brush.setColor(_fill_color);
     my_brush.setStyle(Qt::BrushStyle::SolidPattern);
@@ -1097,6 +1106,8 @@ void sim_env::viewer::Box2DWorldView::repopulate()
         return;
     }
     Box2DWorldPtr world = _world.lock();
+    // clear any old drawings
+    clearScene(true);
     // Create object views
     std::vector<ObjectPtr> objects;
     world->getObjects(objects, true);
@@ -1264,7 +1275,6 @@ sim_env::WorldViewer::Handle sim_env::viewer::Box2DWorldView::drawVoxelGrid(
 
 bool sim_env::viewer::Box2DWorldView::renderImage(const std::string& filename, unsigned int width, unsigned int height, bool include_drawings)
 {
-    std::lock_guard<std::recursive_mutex> lock(_mutex_modify_graphics_items);
     synchronizeScene();
     std::vector<QGraphicsItem*> items_to_show;
     if (not include_drawings) {
@@ -1359,29 +1369,10 @@ QSize sim_env::viewer::Box2DWorldView::sizeHint() const
     return { _width, _height };
 }
 
-void sim_env::viewer::Box2DWorldView::randomSceneColor(const std::map<std::string, unsigned int> sorting_groups,
-                                                       float group_colors[][3], const int num_colors)
+void sim_env::viewer::Box2DWorldView::setColor(const std::string& name, const Eigen::Vector4f& color)
 {
-    auto logger = getLogger();
-    int obj_num = (int) sorting_groups.size() - 1;
-    int num_classes = (int) floor(obj_num/2);
-    if (num_classes < 2){
-        num_classes = 2;
-    } else if (num_classes > num_colors){
-        num_classes = num_colors;
-    }
-    // Random int generator;
-    std::random_device rd;
-    std::mt19937 gen(rd());
-    std::uniform_int_distribution<> dis(1,num_classes);
-    int idx;
-    // Rendering each object;
-    for (auto& elem: sorting_groups) {
-        if (elem.second!=0){
-            idx = dis(gen);
-            setColor(elem.first, group_colors[idx][0], group_colors[idx][1], group_colors[idx][2]);
-        }
-    }
+    // TODO should we support alpha values?
+    setColor(name, color[0], color[1], color[2]);
 }
 
 void sim_env::viewer::Box2DWorldView::setColor(const std::string& name, float r, float g, float b)
@@ -1517,6 +1508,31 @@ sim_env::LoggerPtr sim_env::viewer::Box2DWorldView::getLogger() const
         return sim_env::DefaultLogger::getInstance();
     }
 }
+
+void sim_env::viewer::Box2DWorldView::clearScene(bool clear_drawings)
+{
+    std::lock_guard<std::recursive_mutex> lock(_mutex_modify_graphics_items);
+    // delete all object views
+    for (auto obj_item : _object_views) {
+        _scene->removeItem(obj_item.second);
+        delete obj_item.second;
+    }
+    _object_views.clear();
+    // delete all robot views
+    for (auto robot_item : _robot_views) {
+        _scene->removeItem(robot_item.second);
+        delete robot_item.second;
+    }
+    _robot_views.clear();
+    // optionally also remove all drawings
+    if (clear_drawings) {
+        for (auto drawing_item : _drawings) {
+            _scene->removeItem(drawing_item.second);
+            delete drawing_item.second;
+        }
+        _drawings.clear();
+    }
+}
 /////////////////////////////////// Box2DSimulationController ///////////////////////////////////
 sim_env::viewer::Box2DSimulationController::Box2DSimulationController(Box2DWorldPtr world)
 {
@@ -1576,6 +1592,81 @@ void sim_env::viewer::Box2DSimulationController::SimulationThread::run()
         std::this_thread::sleep_for(std::chrono::duration<float>(time_step));
     }
 }
+/////////////////////////////////////// Box2DImageRenderer ///////////////////////////////////////
+sim_env::Box2DWorldViewer::Box2DImageRenderer::Box2DImageRenderer(sim_env::Box2DWorldPtr world)
+    : _world_view(1.0f, 1.0f)
+{
+    _world_view.setBox2DWorld(world);
+}
+
+sim_env::Box2DWorldViewer::Box2DImageRenderer::~Box2DImageRenderer() = default;
+
+void sim_env::Box2DWorldViewer::Box2DImageRenderer::centerCamera(bool include_drawings)
+{
+    std::lock_guard<std::recursive_mutex> guard(_mutex);
+    _world_view.centerCamera(include_drawings);
+}
+
+sim_env::WorldViewer::Handle sim_env::Box2DWorldViewer::Box2DImageRenderer::drawBox(const Eigen::Vector3f& pos, const Eigen::Vector3f& extent,
+    const Eigen::Vector4f& color, bool solid, float edge_width)
+{
+    std::lock_guard<std::recursive_mutex> guard(_mutex);
+    return _world_view.drawBox(pos, extent, color, solid, edge_width);
+}
+
+sim_env::WorldViewer::Handle sim_env::Box2DWorldViewer::Box2DImageRenderer::drawFrame(const Eigen::Affine3f& transform, float length, float width)
+{
+    std::lock_guard<std::recursive_mutex> guard(_mutex);
+    return _world_view.drawFrame(transform, length, width);
+}
+
+sim_env::WorldViewer::Handle sim_env::Box2DWorldViewer::Box2DImageRenderer::drawLine(const Eigen::Vector3f& start,
+    const Eigen::Vector3f& end,
+    const Eigen::Vector4f& color,
+    float width)
+{
+    std::lock_guard<std::recursive_mutex> guard(_mutex);
+    return _world_view.drawLine(start, end, color, width);
+}
+sim_env::WorldViewer::Handle sim_env::Box2DWorldViewer::Box2DImageRenderer::drawSphere(const Eigen::Vector3f& center, float radius,
+    const Eigen::Vector4f& color,
+    float width)
+{
+    std::lock_guard<std::recursive_mutex> guard(_mutex);
+    return _world_view.drawCircle(center, radius, color, width);
+}
+
+sim_env::WorldViewer::Handle sim_env::Box2DWorldViewer::Box2DImageRenderer::drawVoxelGrid(const grid::VoxelGrid<float, Eigen::Vector4f>& grid,
+    const WorldViewer::Handle& old_handle)
+{
+    std::lock_guard<std::recursive_mutex> guard(_mutex);
+    return _world_view.drawVoxelGrid(grid, old_handle);
+}
+
+bool sim_env::Box2DWorldViewer::Box2DImageRenderer::renderImage(const std::string& filename, unsigned int width, unsigned int height,
+    bool include_drawings)
+{
+    std::lock_guard<std::recursive_mutex> guard(_mutex);
+    return _world_view.renderImage(filename, width, height, include_drawings);
+}
+
+void sim_env::Box2DWorldViewer::Box2DImageRenderer::resetCamera()
+{
+    std::lock_guard<std::recursive_mutex> guard(_mutex);
+    _world_view.resetCamera();
+}
+
+void sim_env::Box2DWorldViewer::Box2DImageRenderer::setColor(const std::string& name, const Eigen::Vector4f& color)
+{
+    std::lock_guard<std::recursive_mutex> guard(_mutex);
+    _world_view.setColor(name, color);
+}
+
+void sim_env::Box2DWorldViewer::Box2DImageRenderer::setVisible(const std::string& name, bool visible)
+{
+    std::lock_guard<std::recursive_mutex> guard(_mutex);
+    _world_view.setObjectVisible(name, visible);
+}
 
 //////////////////////////////////////// Box2DWorldViewer ////////////////////////////////////////
 sim_env::Box2DWorldViewer::Box2DWorldViewer(sim_env::Box2DWorldPtr world)
@@ -1589,9 +1680,6 @@ sim_env::Box2DWorldViewer::Box2DWorldViewer(sim_env::Box2DWorldPtr world)
 sim_env::Box2DWorldViewer::~Box2DWorldViewer()
 {
     deleteArgs();
-    if (!_is_showing) {
-        delete _world_view;
-    } // else it is deleted by Qt
 }
 
 void sim_env::Box2DWorldViewer::deleteArgs()
@@ -1604,7 +1692,7 @@ void sim_env::Box2DWorldViewer::deleteArgs()
     _argc = 0;
 }
 
-void sim_env::Box2DWorldViewer::init(int argc, const char* const* argv)
+void sim_env::Box2DWorldViewer::init(int argc, char** argv)
 {
     // Qt requires the parameters argc and argv to exist as long as the application exists
     // so let's copy them
@@ -1618,7 +1706,7 @@ void sim_env::Box2DWorldViewer::init(int argc, const char* const* argv)
         std::strcpy(_argv[i], argv[i]);
     }
     _app = std::unique_ptr<QApplication>(new QApplication(_argc, _argv));
-    // create the world view here, so we can also render without showing the GUI
+    // create world view that we actually show
     if (!_world.expired()) {
         _world_view = new viewer::Box2DWorldView(1.0f, 1.0f);
         _world_view->setBox2DWorld(_world.lock());
@@ -1679,6 +1767,15 @@ sim_env::WorldViewer::Handle sim_env::Box2DWorldViewer::drawVoxelGrid(const grid
     const WorldViewer::Handle& old_handle)
 {
     return _world_view->drawVoxelGrid(grid, old_handle);
+}
+
+sim_env::WorldViewer::ImageRendererPtr sim_env::Box2DWorldViewer::createImageRenderer()
+{
+    if (_world.expired()) {
+        log("Could not access Box2DWorld. Can not create ImageRenderer", "[sim_env::Box2DWorldViewer]", Logger::LogLevel::Error);
+        return nullptr;
+    }
+    return std::make_shared<sim_env::Box2DWorldViewer::Box2DImageRenderer>(_world.lock());
 }
 
 bool sim_env::Box2DWorldViewer::renderImage(const std::string& filename, unsigned int width, unsigned int height,
@@ -1791,6 +1888,11 @@ QWidget* sim_env::Box2DWorldViewer::createSideBar()
 void sim_env::Box2DWorldViewer::setVisible(const std::string& name, bool visible)
 {
     _world_view->setObjectVisible(name, visible);
+}
+
+void sim_env::Box2DWorldViewer::setColor(const std::string& name, const Eigen::Vector4f& color)
+{
+    _world_view->setColor(name, color);
 }
 
 void sim_env::Box2DWorldViewer::addCustomWidget(QWidget* widget, const std::string& name)
