@@ -8,6 +8,8 @@
 #include <sim_env/Box2DController.h>
 #include <sim_env/Box2DWorld.h>
 // Qt includes
+#include <QRectF>
+#include <QTimer>
 #include <QtGui/QApplication>
 #include <QtGui/QColor>
 #include <QtGui/QFormLayout>
@@ -27,7 +29,7 @@
 
 namespace sim_env {
 namespace viewer {
-    class Box2DWorldView;
+    class Box2DScene;
     namespace utils {
         int toTickValue(float value, float min, float max);
         float fromTickValue(int tick, float min, float max);
@@ -56,7 +58,7 @@ namespace viewer {
 
     class Box2DObjectView : public QGraphicsItem {
     public:
-        Box2DObjectView(Box2DObjectPtr object, Box2DWorldView* world_view);
+        Box2DObjectView(Box2DObjectPtr object, Box2DScene* world_scene);
         ~Box2DObjectView();
         QRectF boundingRect() const override;
         void paint(QPainter* painter, const QStyleOptionGraphicsItem* option, QWidget* widget) override;
@@ -70,15 +72,15 @@ namespace viewer {
         Box2DObjectWeakPtr _object;
 
     private:
-        Box2DWorldView* _world_view; // raw pointer, but this view is destroyed
-            // when the parent view is desrtroyed
+        Box2DScene* _world_scene; // raw pointer, but this view is destroyed
+            // when the scene is destroyed
         std::vector<Box2DLinkView*> _link_views;
         QColor _default_color;
     };
 
     class Box2DRobotView : public QGraphicsItem {
     public:
-        Box2DRobotView(Box2DRobotPtr robot, Box2DWorldView* world_view);
+        Box2DRobotView(Box2DRobotPtr robot, Box2DScene* world_scene);
         ~Box2DRobotView();
         QRectF boundingRect() const override;
         void paint(QPainter* painter, const QStyleOptionGraphicsItem* option, QWidget* widget) override;
@@ -92,19 +94,19 @@ namespace viewer {
         Box2DRobotWeakPtr _robot;
 
     private:
-        Box2DWorldView* _world_view; // raw pointer, but this view is destroyed
+        Box2DScene* _world_scene; // raw pointer, but this view is destroyed
             // when the parent view is desrtroyed
         std::vector<Box2DLinkView*> _link_views;
         QColor _default_color;
     };
 
-    class Box2DJointView : public QGraphicsItem {
-    public:
-        Box2DJointView(Box2DJointConstPtr joint, QGraphicsScene* scene, QGraphicsItem* parent = 0);
-        //            ~Box2DJointView();
-    protected:
-        Box2DJointConstWeakPtr _joint;
-    };
+    // class Box2DJointView : public QGraphicsItem {
+    // public:
+    //     Box2DJointView(Box2DJointConstPtr joint, QGraphicsItem* parent = 0);
+    //     //            ~Box2DJointView();
+    // protected:
+    //     Box2DJointConstWeakPtr _joint;
+    // };
 
     class Box2DFrameView : public QGraphicsItem {
     public:
@@ -118,6 +120,76 @@ namespace viewer {
         float _width;
     };
 
+    class Box2DScene : public QGraphicsScene {
+        Q_OBJECT
+        friend class Box2DRobotView;
+        friend class Box2DObjectView;
+
+    public:
+        Box2DScene(Box2DWorldPtr world);
+        ~Box2DScene();
+        WorldViewer::Handle drawFrame(const Eigen::Affine3f& frame, float length = 1.0f, float width = 0.01f);
+        WorldViewer::Handle drawBox(const Eigen::Vector3f& pos,
+            const Eigen::Vector3f& extent,
+            const Eigen::Vector4f& color = Eigen::Vector4f(0.0f, 0.0f, 0.0f, 1.0f),
+            bool solid = true,
+            float edge_width = 0.1f);
+        WorldViewer::Handle drawLine(const Eigen::Vector3f& start,
+            const Eigen::Vector3f& end,
+            const Eigen::Vector4f& color = Eigen::Vector4f(0.0f, 0.0f, 0.0f, 1.0f),
+            float width = 0.1f);
+        WorldViewer::Handle drawCircle(const Eigen::Vector3f& center,
+            float radius,
+            const Eigen::Vector4f& color = Eigen::Vector4f(0.0f, 0.0f, 0.0f, 1.0f),
+            float width = 0.1f);
+        /**
+             * Draws the given voxel grid. Since Box2D is 2d, the visualization is 2D as well, hence
+             * only grids with size of 1 in z are supported. If the given grid has size != 1, a logic
+             * error is thrown.
+             */
+        WorldViewer::Handle drawVoxelGrid(const grid::VoxelGrid<float, Eigen::Vector4f>& grid,
+            const WorldViewer::Handle& old_handle);
+        bool renderImage(const std::string& filename, unsigned int width, unsigned int height, bool include_drawings);
+        bool renderImage(const std::string& filename, unsigned int width, unsigned int height, bool include_drawings, const QRectF& render_region);
+        void removeDrawing(const WorldViewer::Handle& handle);
+        void removeAllDrawings();
+        void setColor(const std::string& name, float r, float g, float b);
+        void setColor(const std::string& name, const Eigen::Vector4f& color);
+        void resetColor(const std::string& name);
+        void setObjectVisible(const std::string& name, bool visible);
+        // Return bounds of the world in scene coordinates
+        QRectF getWorldBounds() const;
+        // Return bounds so that all robots/objects (and optionally all other drawings) are within these bounds.
+        QRectF getDrawingBounds(bool include_drawings) const;
+        void synchronizeScene();
+
+    signals:
+        void objectSelected(sim_env::ObjectWeakPtr object);
+
+    protected:
+        /**
+          * Repopulates the visualized scene by recreating all child views based on the currently
+          * set Box2D world.
+          */
+        void repopulate();
+        void setSelectedObject(sim_env::ObjectWeakPtr object);
+        void clearScene(bool clear_drawings = true);
+        WorldViewer::Handle addDrawing(QGraphicsItem* item);
+        LoggerPtr getLogger() const;
+
+    private:
+        QRectF _world_bounds;
+        Box2DWorldWeakPtr _world;
+        sim_env::ObjectWeakPtr _currently_selected_object;
+        std::map<std::string, Box2DObjectView*> _object_views;
+        std::map<std::string, Box2DRobotView*> _robot_views;
+        std::map<unsigned int, QGraphicsItem*> _drawings;
+        // The following members are required to ensure we only add/remove QGraphicsItem in the main thread.
+        std::recursive_mutex _mutex_modify_graphics_items;
+        std::queue<QGraphicsItem*> _items_to_add;
+        std::queue<QGraphicsItem*> _items_to_remove;
+        WorldViewer::Handle _world_bounds_handle;
+    };
     ////////////////////// QT Widgets ////////////////////////
     class LineEditChangeDetector : public QObject {
         Q_OBJECT
@@ -215,85 +287,33 @@ namespace viewer {
 
     class Box2DWorldView : public QGraphicsView {
         Q_OBJECT
-        friend class Box2DRobotView;
-        friend class Box2DObjectView;
 
     public:
         Box2DWorldView(float pw, float ph, int width = 800, int height = 900, QWidget* parent = 0);
         ~Box2DWorldView();
-        void setBox2DWorld(Box2DWorldPtr world);
-        /**
-             * Repopulates the visualized scene by recreating all child views based on the currently
-             * set Box2D world.
-             */
-        void repopulate();
+        void setBox2DWorld(sim_env::Box2DWorldPtr world);
         // call when the view is actually shown on the screen
         void showEvent(QShowEvent* event) override;
-        WorldViewer::Handle drawFrame(const Eigen::Affine3f& frame, float length = 1.0f, float width = 0.01f);
-        WorldViewer::Handle drawBox(const Eigen::Vector3f& pos,
-            const Eigen::Vector3f& extent,
-            const Eigen::Vector4f& color = Eigen::Vector4f(0.0f, 0.0f, 0.0f, 1.0f),
-            bool solid = true,
-            float edge_width = 0.1f);
-        WorldViewer::Handle drawLine(const Eigen::Vector3f& start,
-            const Eigen::Vector3f& end,
-            const Eigen::Vector4f& color = Eigen::Vector4f(0.0f, 0.0f, 0.0f, 1.0f),
-            float width = 0.1f);
-        WorldViewer::Handle drawCircle(const Eigen::Vector3f& center,
-            float radius,
-            const Eigen::Vector4f& color = Eigen::Vector4f(0.0f, 0.0f, 0.0f, 1.0f),
-            float width = 0.1f);
-        /**
-             * Draws the given voxel grid. Since Box2D is 2d, the visualization is 2D as well, hence
-             * only grids with size of 1 in z are supported. If the given grid has size != 1, a logic
-             * error is thrown.
-             */
-        WorldViewer::Handle drawVoxelGrid(const grid::VoxelGrid<float, Eigen::Vector4f>& grid,
-            const WorldViewer::Handle& old_handle);
-        bool renderImage(const std::string& filename, unsigned int width, unsigned int height, bool include_drawings);
+        QSize sizeHint() const override;
+        void setRelativeSize(float width, float height);
         void centerCamera(bool include_drawings);
         void resetCamera();
-        void removeDrawing(const WorldViewer::Handle& handle);
-        void removeAllDrawings();
-        QSize sizeHint() const override;
-        void setColor(const std::string& name, float r, float g, float b);
-        void setColor(const std::string& name, const Eigen::Vector4f& color);
-        void resetColor(const std::string& name);
-        void setObjectVisible(const std::string& name, bool visible);
-        void setRelativeSize(float width, float height);
-
+        Box2DScene* getBox2DScene() const;
     public slots:
         void refreshView();
     signals:
-        void objectSelected(sim_env::ObjectWeakPtr object);
         void refreshTick();
 
     protected:
-        void setSelectedObject(sim_env::ObjectWeakPtr object);
         void wheelEvent(QWheelEvent* event) override;
         void scaleView(double scale_factor);
-        WorldViewer::Handle addDrawing(QGraphicsItem* item);
-        void synchronizeScene();
-        LoggerPtr getLogger() const;
-        void clearScene(bool clear_drawings = true);
         // Variables
-        QGraphicsScene* _scene;
-        QRectF _world_bounds;
-        QTimer* _refresh_timer;
+        Box2DScene* _scene;
+        QTimer _refresh_timer;
         int _width;
         int _height;
         float _rel_width;
         float _rel_height;
-        Box2DWorldWeakPtr _world;
-        sim_env::ObjectWeakPtr _currently_selected_object;
-        std::map<std::string, Box2DObjectView*> _object_views;
-        std::map<std::string, Box2DRobotView*> _robot_views;
-        std::map<unsigned int, QGraphicsItem*> _drawings;
-        // The following members are required to ensure we only add/remove QGraphicsItem in the main thread.
-        std::recursive_mutex _mutex_modify_graphics_items;
-        std::queue<QGraphicsItem*> _items_to_add;
-        std::queue<QGraphicsItem*> _items_to_remove;
-        WorldViewer::Handle _world_bounds_handle;
     };
 
     class Box2DSimulationController : public QObject {
@@ -426,7 +446,8 @@ public:
         void setColor(const std::string& name, const Eigen::Vector4f& color) override;
 
     private:
-        viewer::Box2DWorldView _world_view;
+        viewer::Box2DScene _world_scene;
+        QRectF _render_region;
         std::recursive_mutex _mutex;
     };
 
@@ -488,6 +509,7 @@ public:
      * @param visible - if true, show it, else hide. 
      */
     void setColor(const std::string& name, const Eigen::Vector4f& color) override;
+    void resetColor(const std::string& name);
     void addCustomWidget(QWidget* widget, const std::string& name);
     viewer::Box2DWorldView* getWorldViewer();
 

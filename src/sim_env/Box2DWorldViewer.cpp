@@ -34,10 +34,10 @@ float sim_env::viewer::utils::fromTickValue(int tick, float min, float max)
 }
 
 //////////////////////////////////////// Box2DObjectView ////////////////////////////////////////
-sim_env::viewer::Box2DObjectView::Box2DObjectView(sim_env::Box2DObjectPtr object, sim_env::viewer::Box2DWorldView* world_view)
+sim_env::viewer::Box2DObjectView::Box2DObjectView(sim_env::Box2DObjectPtr object, sim_env::viewer::Box2DScene* world_scene)
 {
     _object = object;
-    _world_view = world_view;
+    _world_scene = world_scene;
     std::vector<LinkConstPtr> links;
     object->getLinks(links);
     setFlag(GraphicsItemFlag::ItemIsSelectable, true);
@@ -102,7 +102,7 @@ void sim_env::viewer::Box2DObjectView::mousePressEvent(QGraphicsSceneMouseEvent*
     auto logger = DefaultLogger::getInstance();
     std::string prefix("[sim_env::viewer::Box2DObject::mousePressEvent]");
     logger->logDebug("Object selected", prefix);
-    _world_view->setSelectedObject(_object);
+    _world_scene->setSelectedObject(_object);
 }
 
 void sim_env::viewer::Box2DObjectView::wheelEvent(QGraphicsSceneWheelEvent* event)
@@ -143,10 +143,10 @@ QVariant sim_env::viewer::Box2DObjectView::itemChange(QGraphicsItem::GraphicsIte
 }
 
 //////////////////////////////////////// Box2DRobotView ////////////////////////////////////////
-sim_env::viewer::Box2DRobotView::Box2DRobotView(sim_env::Box2DRobotPtr robot, Box2DWorldView* world_view)
+sim_env::viewer::Box2DRobotView::Box2DRobotView(sim_env::Box2DRobotPtr robot, Box2DScene* world_scene)
 {
     _robot = robot;
-    _world_view = world_view;
+    _world_scene = world_scene;
     std::vector<LinkConstPtr> links;
     robot->getLinks(links);
     setFlag(GraphicsItemFlag::ItemIsSelectable, true);
@@ -180,7 +180,7 @@ void sim_env::viewer::Box2DRobotView::mousePressEvent(QGraphicsSceneMouseEvent* 
     auto logger = DefaultLogger::getInstance();
     std::string prefix("[sim_env::viewer::Box2DRobotView::mousePressEvent]");
     logger->logDebug("Mouse pressed on robot.", prefix);
-    _world_view->setSelectedObject(_robot);
+    _world_scene->setSelectedObject(_robot);
 }
 
 QRectF sim_env::viewer::Box2DRobotView::boundingRect() const
@@ -339,15 +339,13 @@ void sim_env::viewer::Box2DLinkView::paint(QPainter* painter, const QStyleOption
 }
 
 //////////////////////////////////////// Box2DJointView ////////////////////////////////////////
-sim_env::viewer::Box2DJointView::Box2DJointView(sim_env::Box2DJointConstPtr joint, QGraphicsScene* scene,
-    QGraphicsItem* parent)
-    : QGraphicsItem(parent)
-{
-}
+// sim_env::viewer::Box2DJointView::Box2DJointView(sim_env::Box2DJointConstPtr joint,
+//     QGraphicsItem* parent)
+//     : QGraphicsItem(parent)
+// {
+// }
 
-//sim_env::viewer::Box2DJointView::~Box2DJointView() {
-//
-//}
+// sim_env::viewer::Box2DJointView::~Box2DJointView() = default;
 
 //////////////////////////////////////// Box2DFrameView ////////////////////////////////////////
 sim_env::viewer::Box2DFrameView::Box2DFrameView(const Eigen::Affine3f& frame,
@@ -386,6 +384,383 @@ void sim_env::viewer::Box2DFrameView::paint(QPainter* painter, const QStyleOptio
     painter->setPen(original_pen);
 }
 
+//////////////////////////////////////// Box2DScene ////////////////////////////////////////
+sim_env::viewer::Box2DScene::Box2DScene(Box2DWorldPtr world)
+{
+    _world = world;
+    repopulate();
+}
+
+sim_env::viewer::Box2DScene::~Box2DScene() = default;
+
+sim_env::WorldViewer::Handle sim_env::viewer::Box2DScene::drawFrame(const Eigen::Affine3f& frame, float length, float width)
+{
+    QGraphicsItem* item = new Box2DFrameView(frame, length, width);
+    return addDrawing(item);
+}
+
+sim_env::WorldViewer::Handle sim_env::viewer::Box2DScene::drawBox(const Eigen::Vector3f& pos,
+    const Eigen::Vector3f& extent,
+    const Eigen::Vector4f& color,
+    bool solid,
+    float edge_width)
+{
+    QPen pen;
+    pen.setWidthF(edge_width);
+    QColor q_color;
+    q_color.setRgbF(color[0], color[1], color[2], color[3]);
+    pen.setColor(q_color);
+    QBrush brush;
+    brush.setColor(q_color);
+    if (solid) {
+        brush.setStyle(Qt::BrushStyle::SolidPattern);
+    } else {
+        brush.setStyle(Qt::BrushStyle::NoBrush);
+    }
+    auto* rect = new QGraphicsRectItem(pos[0], pos[1], extent[0], extent[1]);
+    rect->setBrush(brush);
+    rect->setPen(pen);
+    return addDrawing(rect);
+}
+
+sim_env::WorldViewer::Handle sim_env::viewer::Box2DScene::drawLine(const Eigen::Vector3f& start,
+    const Eigen::Vector3f& end,
+    const Eigen::Vector4f& color,
+    float width)
+{
+    QColor q_color;
+    q_color.setRgbF(color[0], color[1], color[2], color[3]);
+    QPen pen;
+    pen.setWidthF(width);
+    pen.setColor(q_color);
+    Eigen::Vector3f dummy_end(end);
+    if ((start - end).norm() == 0.0f) {
+        dummy_end = end + Eigen::Vector3f(0.001f, 0.001f, 0.001f);
+    }
+    auto* line = new QGraphicsLineItem(start[0], start[1], dummy_end[0], dummy_end[1]);
+    line->setPen(pen);
+    return addDrawing(line);
+}
+
+sim_env::WorldViewer::Handle sim_env::viewer::Box2DScene::drawCircle(const Eigen::Vector3f& center,
+    float radius,
+    const Eigen::Vector4f& color,
+    float width)
+{
+    QColor q_color;
+    q_color.setRgbF(color[0], color[1], color[2], color[3]);
+    QPen pen;
+    pen.setWidthF(width);
+    pen.setColor(q_color);
+    auto* circle = new QGraphicsEllipseItem(center[0] - radius, center[1] - radius, 2.0 * radius, 2.0 * radius);
+    circle->setPen(pen);
+    return addDrawing(circle);
+}
+
+sim_env::WorldViewer::Handle sim_env::viewer::Box2DScene::drawVoxelGrid(
+    const grid::VoxelGrid<float, Eigen::Vector4f>& grid,
+    const sim_env::WorldViewer::Handle& old_handle)
+{
+    static const std::string log_prefix("[sim_env::viewer::Box2DScene::drawVoxelGrid]");
+    auto logger = getLogger();
+    if (grid.getZSize() != 1) {
+        throw std::logic_error(log_prefix + "Received voxel grid with size in z that is larger than 1, which is not supported for Box2DViewer.");
+    }
+    std::lock_guard<std::recursive_mutex> lock(_mutex_modify_graphics_items);
+    sim_env::WorldViewer::Handle return_handle(old_handle);
+    QGraphicsPixmapItem* pixmap_item(nullptr);
+    // Let's check whether we have an old pixmap item that we can reuse
+    auto drawings_iter = _drawings.find(old_handle.getID());
+    if (drawings_iter != _drawings.end()) {
+        pixmap_item = dynamic_cast<QGraphicsPixmapItem*>(drawings_iter->second);
+        if (!pixmap_item) {
+            logger->logErr("Could not reuse QGraphicsPixmapItem, because the provided handle refers to a different type of QGraphicsItem",
+                log_prefix);
+        }
+        if (pixmap_item->pixmap().width() != grid.getXSize()
+            or pixmap_item->pixmap().height() != grid.getYSize()) {
+            throw std::runtime_error(log_prefix + "The dimensions of the provided voxel grid and the previously stored pixmap are incompatible.");
+        }
+    }
+    if (!pixmap_item) { // if we don't have a pixmap, create a new one
+        QImage image(grid.getXSize(), grid.getYSize(), QImage::Format::Format_ARGB32);
+        pixmap_item = new QGraphicsPixmapItem(QPixmap::fromImage(image));
+        return_handle = addDrawing(pixmap_item);
+    }
+    // now do the actual drawing
+    assert(pixmap_item);
+    // QImage image = pixmap_item->pixmap().toImage();
+    QImage image(grid.getXSize(), grid.getYSize(), QImage::Format::Format_ARGB32);
+    auto index_gen = grid.getIndexGenerator();
+    while (index_gen.hasNext()) { // run over the whole grid
+        auto idx = index_gen.next();
+        Eigen::Vector4f color_value = grid(idx);
+        color_value *= 255;
+        auto qt_color_value = qRgba((int)(color_value[0]), (int)(color_value[1]),
+            (int)(color_value[2]), (int)(color_value[3]));
+        image.setPixel(idx.ix, idx.iy, qt_color_value);
+    }
+    pixmap_item->setPixmap(QPixmap::fromImage(image));
+    auto grid_tf = grid.getTransform();
+    auto tf_matrix = grid_tf.matrix();
+    QTransform qt_transform(tf_matrix(0, 0), tf_matrix(1, 0),
+        tf_matrix(0, 1), tf_matrix(1, 1),
+        tf_matrix(0, 3), tf_matrix(1, 3));
+    pixmap_item->setTransform(qt_transform);
+    Eigen::Vector3f min_point;
+    Eigen::Vector3f max_point;
+    grid.getBoundingBox(min_point, max_point);
+    float scale_inv = 1.0f / grid.getCellSize();
+    pixmap_item->setOffset(QPointF(scale_inv * min_point[0], scale_inv * min_point[1]));
+    pixmap_item->setScale(grid.getCellSize());
+    return return_handle;
+}
+
+bool sim_env::viewer::Box2DScene::renderImage(const std::string& filename, unsigned int width, unsigned int height, bool include_drawings)
+{
+    return renderImage(filename, width, height, include_drawings, _world_bounds);
+}
+
+bool sim_env::viewer::Box2DScene::renderImage(const std::string& filename, unsigned int width, unsigned int height, bool include_drawings, const QRectF& render_region)
+{
+    synchronizeScene();
+    std::vector<QGraphicsItem*> items_to_show;
+    if (not include_drawings) {
+        for (auto iter = _drawings.begin(); iter != _drawings.end(); ++iter) {
+            if (iter->second->isVisible()) {
+                items_to_show.push_back(iter->second);
+                iter->second->hide();
+            }
+        }
+    }
+    QImage image(width, height, QImage::Format_RGB32);
+    image.fill(QColor(255, 255, 255));
+    { // score so that QPainter is destroyed again
+        QPainter painter(&image);
+        render(&painter, QRectF(), render_region);
+        if (not include_drawings) {
+            for (auto item : items_to_show) {
+                item->setVisible(true);
+            }
+        }
+    }
+    // qt has it's y axis pointing downwards, so let's revert that axis
+    image = image.mirrored();
+    return image.save(QString(filename.c_str()));
+}
+
+void sim_env::viewer::Box2DScene::removeDrawing(const WorldViewer::Handle& handle)
+{
+    std::lock_guard<std::recursive_mutex> lock(_mutex_modify_graphics_items);
+    auto iter = _drawings.find(handle.getID());
+    if (iter != _drawings.end()) {
+        _items_to_remove.push(iter->second);
+        _drawings.erase(iter);
+    } else {
+        sim_env::LoggerPtr logger = getLogger();
+        logger->logWarn("Requested to remove drawing with invalid handle.",
+            "[sim_env::viewer::Box2DWorldView::removeDrawing]");
+    }
+}
+
+void sim_env::viewer::Box2DScene::removeAllDrawings()
+{
+    std::lock_guard<std::recursive_mutex> lock(_mutex_modify_graphics_items);
+    for (auto& entry : _drawings) {
+        _items_to_remove.push(entry.second);
+    }
+    _drawings.clear();
+}
+
+QRectF sim_env::viewer::Box2DScene::getWorldBounds() const
+{
+    return _world_bounds;
+}
+
+QRectF sim_env::viewer::Box2DScene::getDrawingBounds(bool include_drawings) const
+{
+    QRectF bounding_rect;
+    for (auto iter = _object_views.begin(); iter != _object_views.end(); ++iter) {
+        auto item_rect = iter->second->sceneBoundingRect();
+        bounding_rect = bounding_rect.united(item_rect);
+    }
+    for (auto iter = _robot_views.begin(); iter != _robot_views.end(); ++iter) {
+        auto item_rect = iter->second->sceneBoundingRect();
+        bounding_rect = bounding_rect.united(item_rect);
+    }
+    if (include_drawings) {
+        for (auto iter = _drawings.begin(); iter != _drawings.end(); ++iter) {
+            auto item_rect = iter->second->sceneBoundingRect();
+            bounding_rect = bounding_rect.united(item_rect);
+        }
+    }
+    return bounding_rect;
+}
+
+void sim_env::viewer::Box2DScene::repopulate()
+{
+    if (_world.expired()) {
+        auto logger = DefaultLogger::getInstance();
+        logger->logWarn("Could not repopulate Box2DScene. Box2DWorld is missing.",
+            "[sim_env::viewer::Box2DScene:repopulate]");
+        return;
+    }
+    Box2DWorldPtr world = _world.lock();
+    // clear any old drawings
+    clearScene(true);
+    // Create object views
+    std::vector<ObjectPtr> objects;
+    world->getObjects(objects, true);
+    for (auto& object : objects) {
+        Box2DObjectPtr box2d_object = std::static_pointer_cast<Box2DObject>(object);
+        Box2DObjectView* obj_view = new Box2DObjectView(box2d_object, this);
+        addItem(obj_view);
+        _object_views.insert(std::make_pair(box2d_object->getName(), obj_view));
+    }
+    // Create robot views
+    std::vector<RobotPtr> robots;
+    world->getRobots(robots);
+    for (auto& robot : robots) {
+        Box2DRobotPtr box2d_robot = std::static_pointer_cast<Box2DRobot>(robot);
+        Box2DRobotView* robot_view = new Box2DRobotView(box2d_robot, this);
+        addItem(robot_view);
+        _robot_views.insert(std::make_pair(box2d_robot->getName(), robot_view));
+    }
+    // add a rectangle showing the world bounds
+    Eigen::VectorXf world_bounds = world->getWorldBounds();
+    Eigen::Vector3f pos(world_bounds[0], world_bounds[1], 0);
+    Eigen::Vector3f extents(world_bounds[2] - world_bounds[0], world_bounds[3] - world_bounds[1], 0);
+    // TODO the thickness here shouldn't be hardcoded
+    _world_bounds_handle = drawBox(pos, extents, Eigen::Vector4f(0, 0, 0, 1.0f), false, 0.004);
+    _world_bounds.setRect(pos[0], pos[1], extents[0], extents[1]);
+}
+
+void sim_env::viewer::Box2DScene::setColor(const std::string& name, const Eigen::Vector4f& color)
+{
+    // TODO should we support alpha values?
+    setColor(name, color[0], color[1], color[2]);
+}
+
+void sim_env::viewer::Box2DScene::setColor(const std::string& name, float r, float g, float b)
+{
+    auto iter = _object_views.find(name);
+    if (iter != _object_views.end()) {
+        iter->second->setColor(r, g, b);
+    } else {
+        auto iter2 = _robot_views.find(name);
+        if (iter2 != _robot_views.end()) {
+            iter2->second->setColor(r, g, b);
+        } else {
+            auto logger = getLogger();
+            logger->logErr("Could not set color for object " + name + " because it was not found",
+                "[sim_env::viewer::Box2DScene::setColor]");
+        }
+    }
+}
+
+void sim_env::viewer::Box2DScene::resetColor(const std::string& name)
+{
+    auto iter = _object_views.find(name);
+    if (iter != _object_views.end()) {
+        iter->second->resetColor();
+    } else {
+        auto iter2 = _robot_views.find(name);
+        if (iter2 != _robot_views.end()) {
+            iter2->second->resetColor();
+        } else {
+            auto logger = getLogger();
+            logger->logErr("Could not reset color for object " + name + " because it was not found",
+                "[sim_env::viewer::Box2DScene::resetColor]");
+        }
+    }
+}
+
+void sim_env::viewer::Box2DScene::setObjectVisible(const std::string& name, bool visible)
+{
+    auto iter = _object_views.find(name);
+    if (iter != _object_views.end()) {
+        iter->second->setVisible(visible);
+    } else {
+        auto iter2 = _robot_views.find(name);
+        if (iter2 != _robot_views.end()) {
+            iter2->second->setVisible(visible);
+        } else {
+            auto logger = getLogger();
+            logger->logErr("Could not set visibility of object " + name + ", because it was not found",
+                "[sim_env::viewer::Box2DScene::setVisible]");
+        }
+    }
+}
+
+void sim_env::viewer::Box2DScene::setSelectedObject(sim_env::ObjectWeakPtr object)
+{
+    _currently_selected_object = object;
+    emit objectSelected(_currently_selected_object);
+}
+
+sim_env::WorldViewer::Handle sim_env::viewer::Box2DScene::addDrawing(QGraphicsItem* item)
+{
+    sim_env::WorldViewer::Handle handle;
+    std::lock_guard<std::recursive_mutex> rm_lock(_mutex_modify_graphics_items);
+    // force drawings to be in the back
+    item->setZValue(-1.0);
+    _items_to_add.push(item);
+    _drawings[handle.getID()] = item;
+    return handle;
+}
+
+void sim_env::viewer::Box2DScene::synchronizeScene()
+{
+    // first add new items to the scene if we have any
+    std::lock_guard<std::recursive_mutex> lock(_mutex_modify_graphics_items);
+    while (not _items_to_add.empty()) {
+        addItem(_items_to_add.front());
+        _items_to_add.pop();
+    }
+    // next remove items from the scene if there were requests
+    while (not _items_to_remove.empty()) {
+        QGraphicsItem* item = _items_to_remove.front();
+        removeItem(item);
+        delete item;
+        _items_to_remove.pop();
+    }
+    update();
+}
+
+sim_env::LoggerPtr sim_env::viewer::Box2DScene::getLogger() const
+{
+    Box2DWorldPtr world = _world.lock();
+    if (world) {
+        return world->getLogger();
+    } else {
+        return sim_env::DefaultLogger::getInstance();
+    }
+}
+
+void sim_env::viewer::Box2DScene::clearScene(bool clear_drawings)
+{
+    std::lock_guard<std::recursive_mutex> lock(_mutex_modify_graphics_items);
+    // delete all object views
+    for (auto obj_item : _object_views) {
+        removeItem(obj_item.second);
+        delete obj_item.second;
+    }
+    _object_views.clear();
+    // delete all robot views
+    for (auto robot_item : _robot_views) {
+        removeItem(robot_item.second);
+        delete robot_item.second;
+    }
+    _robot_views.clear();
+    // optionally also remove all drawings
+    if (clear_drawings) {
+        for (auto drawing_item : _drawings) {
+            removeItem(drawing_item.second);
+            delete drawing_item.second;
+        }
+        _drawings.clear();
+    }
+}
 //////////////////////////////////////// LineEditChangeDetector ////////////////////////////////////////
 sim_env::viewer::LineEditChangeDetector::LineEditChangeDetector(QObject* parent)
     : QObject(parent)
@@ -1076,68 +1451,26 @@ void sim_env::viewer::Box2DControllerView::updateTarget()
 sim_env::viewer::Box2DWorldView::Box2DWorldView(float pw, float ph, int width, int height, QWidget* parent)
     : QGraphicsView(parent)
 {
-    _scene = new QGraphicsScene();
-    _refresh_timer = nullptr;
+    _scene = nullptr;
     _width = width;
     _height = height;
     _rel_width = pw;
     _rel_height = ph;
-    setScene(_scene);
     setRenderHint(QPainter::RenderHint::Antialiasing, true);
     // qt has it's y axis pointing downwards, so let's revert that axis
     setTransform(QTransform(1, 0, 0, 0, -1, 0, 0, 0, 1));
     //    setTransformationAnchor(QGraphicsView::ViewportAnchor::AnchorUnderMouse);
+    connect(&_refresh_timer, SIGNAL(timeout()), this, SLOT(refreshView()));
+    _refresh_timer.setSingleShot(false);
 }
 
 sim_env::viewer::Box2DWorldView::~Box2DWorldView() = default;
 
 void sim_env::viewer::Box2DWorldView::setBox2DWorld(sim_env::Box2DWorldPtr world)
 {
-    _world = world;
-    repopulate();
-}
-
-void sim_env::viewer::Box2DWorldView::repopulate()
-{
-    if (_world.expired()) {
-        auto logger = DefaultLogger::getInstance();
-        logger->logWarn("Could not repopulate Box2DWorldView. Box2DWorld is missing.",
-            "[sim_env::viewer::Box2DWorldView]");
-        return;
-    }
-    Box2DWorldPtr world = _world.lock();
-    // clear any old drawings
-    clearScene(true);
-    // Create object views
-    std::vector<ObjectPtr> objects;
-    world->getObjects(objects, true);
-    for (auto& object : objects) {
-        Box2DObjectPtr box2d_object = std::static_pointer_cast<Box2DObject>(object);
-        Box2DObjectView* obj_view = new Box2DObjectView(box2d_object, this);
-        _scene->addItem(obj_view);
-        _object_views.insert(std::make_pair(box2d_object->getName(), obj_view));
-    }
-    // Create robot views
-    std::vector<RobotPtr> robots;
-    world->getRobots(robots);
-    for (auto& robot : robots) {
-        Box2DRobotPtr box2d_robot = std::static_pointer_cast<Box2DRobot>(robot);
-        Box2DRobotView* robot_view = new Box2DRobotView(box2d_robot, this);
-        _scene->addItem(robot_view);
-        _robot_views.insert(std::make_pair(box2d_robot->getName(), robot_view));
-    }
-    // add a rectangle showing the world bounds
-    Eigen::VectorXf world_bounds = world->getWorldBounds();
-    Eigen::Vector3f pos(world_bounds[0], world_bounds[1], 0);
-    Eigen::Vector3f extents(world_bounds[2] - world_bounds[0], world_bounds[3] - world_bounds[1], 0);
-    // TODO the thickness here shouldn't be hardcoded
-    _world_bounds_handle = drawBox(pos, extents, Eigen::Vector4f(0, 0, 0, 1.0f), false, 0.004);
-    _world_bounds.setRect(pos[0], pos[1], extents[0], extents[1]);
-    if (not _refresh_timer) {
-        _refresh_timer = new QTimer(this);
-        connect(_refresh_timer, SIGNAL(timeout()), this, SLOT(refreshView()));
-        _refresh_timer->setSingleShot(false);
-    }
+    delete _scene;
+    _scene = new Box2DScene(world);
+    setScene(_scene);
 }
 
 void sim_env::viewer::Box2DWorldView::showEvent(QShowEvent* event)
@@ -1145,217 +1478,9 @@ void sim_env::viewer::Box2DWorldView::showEvent(QShowEvent* event)
     // TODO we probably don't need this. Instead only force redraws during propagation demo
     // TODO and when modifications on the model occurred.
     // TODO BUG sometimes objects aren't drawn until I zoom in and out again
-    if (!_refresh_timer->isActive()) {
-        _refresh_timer->start(40); //25Hz
+    if (!_refresh_timer.isActive()) {
+        _refresh_timer.start(40); //25Hz
     }
-}
-
-sim_env::WorldViewer::Handle sim_env::viewer::Box2DWorldView::drawFrame(const Eigen::Affine3f& frame, float length, float width)
-{
-    QGraphicsItem* item = new Box2DFrameView(frame, length, width);
-    return addDrawing(item);
-}
-
-sim_env::WorldViewer::Handle sim_env::viewer::Box2DWorldView::drawBox(const Eigen::Vector3f& pos,
-    const Eigen::Vector3f& extent,
-    const Eigen::Vector4f& color,
-    bool solid,
-    float edge_width)
-{
-    QPen pen;
-    pen.setWidthF(edge_width);
-    QColor q_color;
-    q_color.setRgbF(color[0], color[1], color[2], color[3]);
-    pen.setColor(q_color);
-    QBrush brush;
-    brush.setColor(q_color);
-    if (solid) {
-        brush.setStyle(Qt::BrushStyle::SolidPattern);
-    } else {
-        brush.setStyle(Qt::BrushStyle::NoBrush);
-    }
-    auto* rect = new QGraphicsRectItem(pos[0], pos[1], extent[0], extent[1]);
-    rect->setBrush(brush);
-    rect->setPen(pen);
-    return addDrawing(rect);
-}
-
-sim_env::WorldViewer::Handle sim_env::viewer::Box2DWorldView::drawLine(const Eigen::Vector3f& start,
-    const Eigen::Vector3f& end,
-    const Eigen::Vector4f& color,
-    float width)
-{
-    QColor q_color;
-    q_color.setRgbF(color[0], color[1], color[2], color[3]);
-    QPen pen;
-    pen.setWidthF(width);
-    pen.setColor(q_color);
-    Eigen::Vector3f dummy_end(end);
-    if ((start - end).norm() == 0.0f) {
-        dummy_end = end + Eigen::Vector3f(0.001f, 0.001f, 0.001f);
-    }
-    auto* line = new QGraphicsLineItem(start[0], start[1], dummy_end[0], dummy_end[1]);
-    line->setPen(pen);
-    return addDrawing(line);
-}
-
-sim_env::WorldViewer::Handle sim_env::viewer::Box2DWorldView::drawCircle(const Eigen::Vector3f& center,
-    float radius,
-    const Eigen::Vector4f& color,
-    float width)
-{
-    QColor q_color;
-    q_color.setRgbF(color[0], color[1], color[2], color[3]);
-    QPen pen;
-    pen.setWidthF(width);
-    pen.setColor(q_color);
-    auto* circle = new QGraphicsEllipseItem(center[0] - radius, center[1] - radius, 2.0 * radius, 2.0 * radius);
-    circle->setPen(pen);
-    return addDrawing(circle);
-}
-
-sim_env::WorldViewer::Handle sim_env::viewer::Box2DWorldView::drawVoxelGrid(
-    const grid::VoxelGrid<float, Eigen::Vector4f>& grid,
-    const sim_env::WorldViewer::Handle& old_handle)
-{
-    static const std::string log_prefix("[sim_env::viewer::Box2DWorldView::drawVoxelGrid]");
-    auto logger = getLogger();
-    if (grid.getZSize() != 1) {
-        throw std::logic_error(log_prefix + "Received voxel grid with size in z that is larger than 1, which is not supported for Box2DViewer.");
-    }
-    std::lock_guard<std::recursive_mutex> lock(_mutex_modify_graphics_items);
-    sim_env::WorldViewer::Handle return_handle(old_handle);
-    QGraphicsPixmapItem* pixmap_item(nullptr);
-    // Let's check whether we have an old pixmap item that we can reuse
-    auto drawings_iter = _drawings.find(old_handle.getID());
-    if (drawings_iter != _drawings.end()) {
-        pixmap_item = dynamic_cast<QGraphicsPixmapItem*>(drawings_iter->second);
-        if (!pixmap_item) {
-            logger->logErr("Could not reuse QGraphicsPixmapItem, because the provided handle refers to a different type of QGraphicsItem",
-                log_prefix);
-        }
-        if (pixmap_item->pixmap().width() != grid.getXSize()
-            or pixmap_item->pixmap().height() != grid.getYSize()) {
-            throw std::runtime_error(log_prefix + "The dimensions of the provided voxel grid and the previously stored pixmap are incompatible.");
-        }
-    }
-    if (!pixmap_item) { // if we don't have a pixmap, create a new one
-        QImage image(grid.getXSize(), grid.getYSize(), QImage::Format::Format_ARGB32);
-        pixmap_item = new QGraphicsPixmapItem(QPixmap::fromImage(image));
-        return_handle = addDrawing(pixmap_item);
-    }
-    // now do the actual drawing
-    assert(pixmap_item);
-    // QImage image = pixmap_item->pixmap().toImage();
-    QImage image(grid.getXSize(), grid.getYSize(), QImage::Format::Format_ARGB32);
-    auto index_gen = grid.getIndexGenerator();
-    while (index_gen.hasNext()) { // run over the whole grid
-        auto idx = index_gen.next();
-        Eigen::Vector4f color_value = grid(idx);
-        color_value *= 255;
-        auto qt_color_value = qRgba((int)(color_value[0]), (int)(color_value[1]),
-            (int)(color_value[2]), (int)(color_value[3]));
-        image.setPixel(idx.ix, idx.iy, qt_color_value);
-    }
-    pixmap_item->setPixmap(QPixmap::fromImage(image));
-    auto grid_tf = grid.getTransform();
-    auto tf_matrix = grid_tf.matrix();
-    QTransform qt_transform(tf_matrix(0, 0), tf_matrix(1, 0),
-        tf_matrix(0, 1), tf_matrix(1, 1),
-        tf_matrix(0, 3), tf_matrix(1, 3));
-    pixmap_item->setTransform(qt_transform);
-    Eigen::Vector3f min_point;
-    Eigen::Vector3f max_point;
-    grid.getBoundingBox(min_point, max_point);
-    float scale_inv = 1.0f / grid.getCellSize();
-    pixmap_item->setOffset(QPointF(scale_inv * min_point[0], scale_inv * min_point[1]));
-    pixmap_item->setScale(grid.getCellSize());
-    return return_handle;
-}
-
-bool sim_env::viewer::Box2DWorldView::renderImage(const std::string& filename, unsigned int width, unsigned int height, bool include_drawings)
-{
-    synchronizeScene();
-    std::vector<QGraphicsItem*> items_to_show;
-    if (not include_drawings) {
-        for (auto iter = _drawings.begin(); iter != _drawings.end(); ++iter) {
-            if (iter->second->isVisible()) {
-                items_to_show.push_back(iter->second);
-                iter->second->hide();
-            }
-        }
-    }
-    QImage image(width, height, QImage::Format_RGB32);
-    image.fill(QColor(255, 255, 255));
-    { // score so that QPainter is destroyed again
-        QPainter painter(&image);
-        _scene->render(&painter, QRectF(), _world_bounds);
-        if (not include_drawings) {
-            for (auto item : items_to_show) {
-                item->setVisible(true);
-            }
-        }
-    }
-    // qt has it's y axis pointing downwards, so let's revert that axis
-    image = image.mirrored();
-    return image.save(QString(filename.c_str()));
-}
-
-void sim_env::viewer::Box2DWorldView::centerCamera(bool include_drawings)
-{
-    QRectF bounding_rect;
-    for (auto iter = _object_views.begin(); iter != _object_views.end(); ++iter) {
-        auto item_rect = iter->second->sceneBoundingRect();
-        bounding_rect = bounding_rect.united(item_rect);
-    }
-    for (auto iter = _robot_views.begin(); iter != _robot_views.end(); ++iter) {
-        auto item_rect = iter->second->sceneBoundingRect();
-        bounding_rect = bounding_rect.united(item_rect);
-    }
-    if (include_drawings) {
-        for (auto iter = _drawings.begin(); iter != _drawings.end(); ++iter) {
-            auto item_rect = iter->second->sceneBoundingRect();
-            bounding_rect = bounding_rect.united(item_rect);
-        }
-    }
-    fitInView(bounding_rect, Qt::KeepAspectRatio);
-}
-
-void sim_env::viewer::Box2DWorldView::resetCamera()
-{
-    auto iter = _drawings.find(_world_bounds_handle.getID());
-    auto logger = getLogger();
-    if (iter != _drawings.end()) {
-        auto bounding_box = _drawings[_world_bounds_handle.getID()]->sceneBoundingRect();
-        fitInView(bounding_box, Qt::KeepAspectRatio);
-        logger->logInfo("Reset camera");
-    } else {
-        logger->logErr("Could not reset camera view. Bounding box drawing does not exist.",
-            "sim_env::Viewer::Box2DWorldView::resetCamera");
-    }
-}
-
-void sim_env::viewer::Box2DWorldView::removeDrawing(const WorldViewer::Handle& handle)
-{
-    std::lock_guard<std::recursive_mutex> lock(_mutex_modify_graphics_items);
-    auto iter = _drawings.find(handle.getID());
-    if (iter != _drawings.end()) {
-        _items_to_remove.push(iter->second);
-        _drawings.erase(iter);
-    } else {
-        sim_env::LoggerPtr logger = getLogger();
-        logger->logWarn("Requested to remove drawing with invalid handle.",
-            "[sim_env::viewer::Box2DWorldView::removeDrawing]");
-    }
-}
-
-void sim_env::viewer::Box2DWorldView::removeAllDrawings()
-{
-    std::lock_guard<std::recursive_mutex> lock(_mutex_modify_graphics_items);
-    for (auto& entry : _drawings) {
-        _items_to_remove.push(entry.second);
-    }
-    _drawings.clear();
 }
 
 QSize sim_env::viewer::Box2DWorldView::sizeHint() const
@@ -1369,67 +1494,48 @@ QSize sim_env::viewer::Box2DWorldView::sizeHint() const
     return { _width, _height };
 }
 
-void sim_env::viewer::Box2DWorldView::setColor(const std::string& name, const Eigen::Vector4f& color)
-{
-    // TODO should we support alpha values?
-    setColor(name, color[0], color[1], color[2]);
-}
-
-void sim_env::viewer::Box2DWorldView::setColor(const std::string& name, float r, float g, float b)
-{
-    auto iter = _object_views.find(name);
-    if (iter != _object_views.end()) {
-        iter->second->setColor(r, g, b);
-    } else {
-        auto iter2 = _robot_views.find(name);
-        if (iter2 != _robot_views.end()) {
-            iter2->second->setColor(r, g, b);
-        } else {
-            auto logger = getLogger();
-            logger->logErr("Could not set color for object " + name + " because it was not found",
-                "[sim_env::viewer::Box2DWorldView::setColor]");
-        }
-    }
-}
-
-void sim_env::viewer::Box2DWorldView::resetColor(const std::string& name)
-{
-    auto iter = _object_views.find(name);
-    if (iter != _object_views.end()) {
-        iter->second->resetColor();
-    } else {
-        auto iter2 = _robot_views.find(name);
-        if (iter2 != _robot_views.end()) {
-            iter2->second->resetColor();
-        } else {
-            auto logger = getLogger();
-            logger->logErr("Could not reset color for object " + name + " because it was not found",
-                "[sim_env::viewer::Box2DWorldView::resetColor]");
-        }
-    }
-}
-
-void sim_env::viewer::Box2DWorldView::setObjectVisible(const std::string& name, bool visible)
-{
-    auto iter = _object_views.find(name);
-    if (iter != _object_views.end()) {
-        iter->second->setVisible(visible);
-    } else {
-        auto iter2 = _robot_views.find(name);
-        if (iter2 != _robot_views.end()) {
-            iter2->second->setVisible(visible);
-        } else {
-            auto logger = getLogger();
-            logger->logErr("Could not set visibility of object " + name + ", because it was not found",
-                "[sim_env::viewer::Box2DWorldView::setVisible]");
-        }
-    }
-}
-
 void sim_env::viewer::Box2DWorldView::setRelativeSize(float width, float height)
 {
     _rel_height = height;
     _rel_width = width;
+}
+
+void sim_env::viewer::Box2DWorldView::centerCamera(bool include_drawings)
+{
+    auto bounding_rect = _scene->getDrawingBounds(include_drawings);
+    fitInView(bounding_rect, Qt::KeepAspectRatio);
+}
+
+void sim_env::viewer::Box2DWorldView::resetCamera()
+{
+    auto bounding_rect = _scene->getWorldBounds();
+    fitInView(bounding_rect, Qt::KeepAspectRatio);
+    // auto iter = _drawings.find(_world_bounds_handle.getID());
+    // auto logger = getLogger();
+    // if (iter != _drawings.end()) {
+    //     auto bounding_box = _drawings[_world_bounds_handle.getID()]->sceneBoundingRect();
+    //     fitInView(bounding_box, Qt::KeepAspectRatio);
+    //     logger->logInfo("Reset camera");
+    // } else {
+    //     logger->logErr("Could not reset camera view. Bounding box drawing does not exist.",
+    //         "sim_env::Viewer::Box2DWorldView::resetCamera");
+    // }
+}
+
+sim_env::viewer::Box2DScene* sim_env::viewer::Box2DWorldView::getBox2DScene() const
+{
+    return _scene;
+}
+
+void sim_env::viewer::Box2DWorldView::refreshView()
+{
+    //    auto logger = DefaultLogger::getInstance();
+    //    logger->logDebug("REFRESHING WORLD VIEW");
+    if (_scene) {
+        _scene->synchronizeScene();
+    }
+    update();
+    emit refreshTick();
 }
 
 void sim_env::viewer::Box2DWorldView::wheelEvent(QWheelEvent* event)
@@ -1444,21 +1550,6 @@ void sim_env::viewer::Box2DWorldView::wheelEvent(QWheelEvent* event)
     }
 }
 
-void sim_env::viewer::Box2DWorldView::refreshView()
-{
-    //    auto logger = DefaultLogger::getInstance();
-    //    logger->logDebug("REFRESHING WORLD VIEW");
-    synchronizeScene();
-    update();
-    emit refreshTick();
-}
-
-void sim_env::viewer::Box2DWorldView::setSelectedObject(sim_env::ObjectWeakPtr object)
-{
-    _currently_selected_object = object;
-    emit objectSelected(_currently_selected_object);
-}
-
 void sim_env::viewer::Box2DWorldView::scaleView(double scale_factor)
 {
     // this is from a qt example
@@ -1470,69 +1561,6 @@ void sim_env::viewer::Box2DWorldView::scaleView(double scale_factor)
     scale(scale_factor, scale_factor);
 }
 
-sim_env::WorldViewer::Handle sim_env::viewer::Box2DWorldView::addDrawing(QGraphicsItem* item)
-{
-    sim_env::WorldViewer::Handle handle;
-    std::lock_guard<std::recursive_mutex> rm_lock(_mutex_modify_graphics_items);
-    // force drawings to be in the back
-    item->setZValue(-1.0);
-    _items_to_add.push(item);
-    _drawings[handle.getID()] = item;
-    return handle;
-}
-
-void sim_env::viewer::Box2DWorldView::synchronizeScene()
-{
-    // first add new items to the scene if we have any
-    std::lock_guard<std::recursive_mutex> lock(_mutex_modify_graphics_items);
-    while (not _items_to_add.empty()) {
-        _scene->addItem(_items_to_add.front());
-        _items_to_add.pop();
-    }
-    // next remove items from the scene if there were requests
-    while (not _items_to_remove.empty()) {
-        QGraphicsItem* item = _items_to_remove.front();
-        _scene->removeItem(item);
-        delete item;
-        _items_to_remove.pop();
-    }
-    _scene->update();
-}
-
-sim_env::LoggerPtr sim_env::viewer::Box2DWorldView::getLogger() const
-{
-    Box2DWorldPtr world = _world.lock();
-    if (world) {
-        return world->getLogger();
-    } else {
-        return sim_env::DefaultLogger::getInstance();
-    }
-}
-
-void sim_env::viewer::Box2DWorldView::clearScene(bool clear_drawings)
-{
-    std::lock_guard<std::recursive_mutex> lock(_mutex_modify_graphics_items);
-    // delete all object views
-    for (auto obj_item : _object_views) {
-        _scene->removeItem(obj_item.second);
-        delete obj_item.second;
-    }
-    _object_views.clear();
-    // delete all robot views
-    for (auto robot_item : _robot_views) {
-        _scene->removeItem(robot_item.second);
-        delete robot_item.second;
-    }
-    _robot_views.clear();
-    // optionally also remove all drawings
-    if (clear_drawings) {
-        for (auto drawing_item : _drawings) {
-            _scene->removeItem(drawing_item.second);
-            delete drawing_item.second;
-        }
-        _drawings.clear();
-    }
-}
 /////////////////////////////////// Box2DSimulationController ///////////////////////////////////
 sim_env::viewer::Box2DSimulationController::Box2DSimulationController(Box2DWorldPtr world)
 {
@@ -1594,9 +1622,8 @@ void sim_env::viewer::Box2DSimulationController::SimulationThread::run()
 }
 /////////////////////////////////////// Box2DImageRenderer ///////////////////////////////////////
 sim_env::Box2DWorldViewer::Box2DImageRenderer::Box2DImageRenderer(sim_env::Box2DWorldPtr world)
-    : _world_view(1.0f, 1.0f)
+    : _world_scene(world)
 {
-    _world_view.setBox2DWorld(world);
 }
 
 sim_env::Box2DWorldViewer::Box2DImageRenderer::~Box2DImageRenderer() = default;
@@ -1604,20 +1631,20 @@ sim_env::Box2DWorldViewer::Box2DImageRenderer::~Box2DImageRenderer() = default;
 void sim_env::Box2DWorldViewer::Box2DImageRenderer::centerCamera(bool include_drawings)
 {
     std::lock_guard<std::recursive_mutex> guard(_mutex);
-    _world_view.centerCamera(include_drawings);
+    _render_region = _world_scene.getDrawingBounds(include_drawings);
 }
 
 sim_env::WorldViewer::Handle sim_env::Box2DWorldViewer::Box2DImageRenderer::drawBox(const Eigen::Vector3f& pos, const Eigen::Vector3f& extent,
     const Eigen::Vector4f& color, bool solid, float edge_width)
 {
     std::lock_guard<std::recursive_mutex> guard(_mutex);
-    return _world_view.drawBox(pos, extent, color, solid, edge_width);
+    return _world_scene.drawBox(pos, extent, color, solid, edge_width);
 }
 
 sim_env::WorldViewer::Handle sim_env::Box2DWorldViewer::Box2DImageRenderer::drawFrame(const Eigen::Affine3f& transform, float length, float width)
 {
     std::lock_guard<std::recursive_mutex> guard(_mutex);
-    return _world_view.drawFrame(transform, length, width);
+    return _world_scene.drawFrame(transform, length, width);
 }
 
 sim_env::WorldViewer::Handle sim_env::Box2DWorldViewer::Box2DImageRenderer::drawLine(const Eigen::Vector3f& start,
@@ -1626,46 +1653,46 @@ sim_env::WorldViewer::Handle sim_env::Box2DWorldViewer::Box2DImageRenderer::draw
     float width)
 {
     std::lock_guard<std::recursive_mutex> guard(_mutex);
-    return _world_view.drawLine(start, end, color, width);
+    return _world_scene.drawLine(start, end, color, width);
 }
 sim_env::WorldViewer::Handle sim_env::Box2DWorldViewer::Box2DImageRenderer::drawSphere(const Eigen::Vector3f& center, float radius,
     const Eigen::Vector4f& color,
     float width)
 {
     std::lock_guard<std::recursive_mutex> guard(_mutex);
-    return _world_view.drawCircle(center, radius, color, width);
+    return _world_scene.drawCircle(center, radius, color, width);
 }
 
 sim_env::WorldViewer::Handle sim_env::Box2DWorldViewer::Box2DImageRenderer::drawVoxelGrid(const grid::VoxelGrid<float, Eigen::Vector4f>& grid,
     const WorldViewer::Handle& old_handle)
 {
     std::lock_guard<std::recursive_mutex> guard(_mutex);
-    return _world_view.drawVoxelGrid(grid, old_handle);
+    return _world_scene.drawVoxelGrid(grid, old_handle);
 }
 
 bool sim_env::Box2DWorldViewer::Box2DImageRenderer::renderImage(const std::string& filename, unsigned int width, unsigned int height,
     bool include_drawings)
 {
     std::lock_guard<std::recursive_mutex> guard(_mutex);
-    return _world_view.renderImage(filename, width, height, include_drawings);
+    return _world_scene.renderImage(filename, width, height, include_drawings, _render_region);
 }
 
 void sim_env::Box2DWorldViewer::Box2DImageRenderer::resetCamera()
 {
     std::lock_guard<std::recursive_mutex> guard(_mutex);
-    _world_view.resetCamera();
+    _render_region = _world_scene.getWorldBounds();
 }
 
 void sim_env::Box2DWorldViewer::Box2DImageRenderer::setColor(const std::string& name, const Eigen::Vector4f& color)
 {
     std::lock_guard<std::recursive_mutex> guard(_mutex);
-    _world_view.setColor(name, color);
+    _world_scene.setColor(name, color);
 }
 
 void sim_env::Box2DWorldViewer::Box2DImageRenderer::setVisible(const std::string& name, bool visible)
 {
     std::lock_guard<std::recursive_mutex> guard(_mutex);
-    _world_view.setObjectVisible(name, visible);
+    _world_scene.setObjectVisible(name, visible);
 }
 
 //////////////////////////////////////// Box2DWorldViewer ////////////////////////////////////////
@@ -1737,7 +1764,7 @@ int sim_env::Box2DWorldViewer::run()
 
 sim_env::WorldViewer::Handle sim_env::Box2DWorldViewer::drawFrame(const Eigen::Affine3f& transform, float length, float width)
 {
-    return _world_view->drawFrame(transform, length, width);
+    return _world_view->getBox2DScene()->drawFrame(transform, length, width);
 }
 
 sim_env::WorldViewer::Handle sim_env::Box2DWorldViewer::drawBox(const Eigen::Vector3f& pos,
@@ -1746,7 +1773,7 @@ sim_env::WorldViewer::Handle sim_env::Box2DWorldViewer::drawBox(const Eigen::Vec
     bool solid,
     float edge_width)
 {
-    return _world_view->drawBox(pos, extent, color, solid, edge_width);
+    return _world_view->getBox2DScene()->drawBox(pos, extent, color, solid, edge_width);
 }
 
 sim_env::WorldViewer::Handle sim_env::Box2DWorldViewer::drawLine(const Eigen::Vector3f& start,
@@ -1754,19 +1781,19 @@ sim_env::WorldViewer::Handle sim_env::Box2DWorldViewer::drawLine(const Eigen::Ve
     const Eigen::Vector4f& color,
     float width)
 {
-    return _world_view->drawLine(start, end, color, width);
+    return _world_view->getBox2DScene()->drawLine(start, end, color, width);
 }
 sim_env::WorldViewer::Handle sim_env::Box2DWorldViewer::drawSphere(const Eigen::Vector3f& center, float radius,
     const Eigen::Vector4f& color,
     float width)
 {
-    return _world_view->drawCircle(center, radius, color, width);
+    return _world_view->getBox2DScene()->drawCircle(center, radius, color, width);
 }
 
 sim_env::WorldViewer::Handle sim_env::Box2DWorldViewer::drawVoxelGrid(const grid::VoxelGrid<float, Eigen::Vector4f>& grid,
     const WorldViewer::Handle& old_handle)
 {
-    return _world_view->drawVoxelGrid(grid, old_handle);
+    return _world_view->getBox2DScene()->drawVoxelGrid(grid, old_handle);
 }
 
 sim_env::WorldViewer::ImageRendererPtr sim_env::Box2DWorldViewer::createImageRenderer()
@@ -1781,7 +1808,7 @@ sim_env::WorldViewer::ImageRendererPtr sim_env::Box2DWorldViewer::createImageRen
 bool sim_env::Box2DWorldViewer::renderImage(const std::string& filename, unsigned int width, unsigned int height,
     bool include_drawings)
 {
-    return _world_view->renderImage(filename, width, height, include_drawings);
+    return _world_view->getBox2DScene()->renderImage(filename, width, height, include_drawings);
 }
 
 void sim_env::Box2DWorldViewer::centerCamera(bool include_drawings)
@@ -1801,12 +1828,12 @@ sim_env::WorldPtr sim_env::Box2DWorldViewer::getWorld() const
 
 void sim_env::Box2DWorldViewer::removeDrawing(const sim_env::WorldViewer::Handle& handle)
 {
-    _world_view->removeDrawing(handle);
+    _world_view->getBox2DScene()->removeDrawing(handle);
 }
 
 void sim_env::Box2DWorldViewer::removeAllDrawings()
 {
-    _world_view->removeAllDrawings();
+    _world_view->getBox2DScene()->removeAllDrawings();
 }
 
 void sim_env::Box2DWorldViewer::log(const std::string& msg, const std::string& prefix,
@@ -1865,7 +1892,7 @@ void sim_env::Box2DWorldViewer::createBottomBar()
     QObject::connect(sim_control_button, SIGNAL(clicked(bool)), _simulation_controller.get(), SLOT(triggerSimulation(bool)));
     // create robot controller view
     viewer::Box2DControllerView* robot_control_view = new viewer::Box2DControllerView();
-    QObject::connect(_world_view, SIGNAL(objectSelected(sim_env::ObjectWeakPtr)),
+    QObject::connect(_world_view->getBox2DScene(), SIGNAL(objectSelected(sim_env::ObjectWeakPtr)),
         robot_control_view, SLOT(setCurrentObject(sim_env::ObjectWeakPtr)));
     _bottom_tab_widget->addTab(robot_control_view, "Robot control");
     _bottom_tab_widget->setMaximumSize(1980, 300);
@@ -1876,7 +1903,7 @@ QWidget* sim_env::Box2DWorldViewer::createSideBar()
     // TODO Unfortunately this doesn't work with a scroll area (the layout can not be changed on the fly)
     // QScrollArea* scroll_view = new QScrollArea();
     auto* state_view = new viewer::Box2DObjectStateView();
-    QObject::connect(_world_view, SIGNAL(objectSelected(sim_env::ObjectWeakPtr)),
+    QObject::connect(_world_view->getBox2DScene(), SIGNAL(objectSelected(sim_env::ObjectWeakPtr)),
         state_view, SLOT(setCurrentObject(sim_env::ObjectWeakPtr)));
     QObject::connect(state_view, SIGNAL(newUserState()), _world_view,
         SLOT(refreshView()));
@@ -1887,12 +1914,17 @@ QWidget* sim_env::Box2DWorldViewer::createSideBar()
 
 void sim_env::Box2DWorldViewer::setVisible(const std::string& name, bool visible)
 {
-    _world_view->setObjectVisible(name, visible);
+    _world_view->getBox2DScene()->setObjectVisible(name, visible);
 }
 
 void sim_env::Box2DWorldViewer::setColor(const std::string& name, const Eigen::Vector4f& color)
 {
-    _world_view->setColor(name, color);
+    _world_view->getBox2DScene()->setColor(name, color);
+}
+
+void sim_env::Box2DWorldViewer::resetColor(const std::string& name)
+{
+    _world_view->getBox2DScene()->resetColor(name);
 }
 
 void sim_env::Box2DWorldViewer::addCustomWidget(QWidget* widget, const std::string& name)
