@@ -57,6 +57,12 @@ typedef std::shared_ptr<const Box2DWorldViewer> Box2DWorldViewerConstPtr;
 typedef std::weak_ptr<Box2DWorldViewer> Box2DWorldViewerWeakPtr;
 typedef std::weak_ptr<const Box2DWorldViewer> Box2DWorldViewerConstWeakPtr;
 
+class Box2DImageRenderer;
+typedef std::shared_ptr<Box2DImageRenderer> Box2DImageRendererPtr;
+typedef std::shared_ptr<const Box2DImageRenderer> Box2DImageRendererConstPtr;
+typedef std::weak_ptr<Box2DImageRenderer> Box2DImageRendererWeakPtr;
+typedef std::weak_ptr<const Box2DImageRenderer> Box2DImageRendererConstWeakPtr;
+
 class Box2DCollisionChecker;
 typedef std::shared_ptr<Box2DCollisionChecker> Box2DCollisionCheckerPtr;
 typedef std::shared_ptr<const Box2DCollisionChecker> Box2DCollisionCheckerConstPtr;
@@ -537,6 +543,8 @@ public:
 
     void setEnabled(bool b_enable) override;
     bool isEnabled() const override;
+    // returns the underlying box2d object
+    Box2DObjectPtr getBox2DObject();
 
 protected:
     // protected constructor to ensure construction is only done by friend classes
@@ -549,8 +557,6 @@ protected:
     // retrieve all box2d bodies (for collision checking)
     void getBodies(std::vector<b2Body*>& bodies) override;
     LinkPtr getLink(b2Body* body) override;
-    // returns the underlying box2d object
-    Box2DObjectPtr getBox2DObject();
 
 private:
     bool _destroyed;
@@ -750,6 +756,7 @@ public:
     int getPositionSteps() const;
     bool isPhysicallyFeasible() override;
 
+    WorldViewer::ImageRendererPtr getImageRenderer() override;
     WorldViewerPtr getViewer() override;
     LoggerPtr getLogger() override;
     LoggerConstPtr getConstLogger() const override;

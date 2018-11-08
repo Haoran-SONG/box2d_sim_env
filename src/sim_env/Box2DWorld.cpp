@@ -2,6 +2,7 @@
 // Created by joshua on 4/20/17.
 //
 #include "sim_env/Box2DWorld.h"
+#include "sim_env/Box2DImageRenderer.h"
 #include "sim_env/Box2DWorldViewer.h"
 #include "sim_env/utils/MathUtils.h"
 #include "sim_env/utils/YamlUtils.h"
@@ -3182,6 +3183,11 @@ bool Box2DWorld::isPhysicallyFeasible()
         }
     }
     return true;
+}
+
+WorldViewer::ImageRendererPtr Box2DWorld::getImageRenderer()
+{
+    return std::make_shared<sim_env::Box2DImageRenderer>(shared_from_this());
 }
 
 WorldViewerPtr Box2DWorld::getViewer()

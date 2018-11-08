@@ -1620,80 +1620,6 @@ void sim_env::viewer::Box2DSimulationController::SimulationThread::run()
         std::this_thread::sleep_for(std::chrono::duration<float>(time_step));
     }
 }
-/////////////////////////////////////// Box2DImageRenderer ///////////////////////////////////////
-sim_env::Box2DWorldViewer::Box2DImageRenderer::Box2DImageRenderer(sim_env::Box2DWorldPtr world)
-    : _world_scene(world)
-{
-}
-
-sim_env::Box2DWorldViewer::Box2DImageRenderer::~Box2DImageRenderer() = default;
-
-void sim_env::Box2DWorldViewer::Box2DImageRenderer::centerCamera(bool include_drawings)
-{
-    std::lock_guard<std::recursive_mutex> guard(_mutex);
-    _render_region = _world_scene.getDrawingBounds(include_drawings);
-}
-
-sim_env::WorldViewer::Handle sim_env::Box2DWorldViewer::Box2DImageRenderer::drawBox(const Eigen::Vector3f& pos, const Eigen::Vector3f& extent,
-    const Eigen::Vector4f& color, bool solid, float edge_width)
-{
-    std::lock_guard<std::recursive_mutex> guard(_mutex);
-    return _world_scene.drawBox(pos, extent, color, solid, edge_width);
-}
-
-sim_env::WorldViewer::Handle sim_env::Box2DWorldViewer::Box2DImageRenderer::drawFrame(const Eigen::Affine3f& transform, float length, float width)
-{
-    std::lock_guard<std::recursive_mutex> guard(_mutex);
-    return _world_scene.drawFrame(transform, length, width);
-}
-
-sim_env::WorldViewer::Handle sim_env::Box2DWorldViewer::Box2DImageRenderer::drawLine(const Eigen::Vector3f& start,
-    const Eigen::Vector3f& end,
-    const Eigen::Vector4f& color,
-    float width)
-{
-    std::lock_guard<std::recursive_mutex> guard(_mutex);
-    return _world_scene.drawLine(start, end, color, width);
-}
-sim_env::WorldViewer::Handle sim_env::Box2DWorldViewer::Box2DImageRenderer::drawSphere(const Eigen::Vector3f& center, float radius,
-    const Eigen::Vector4f& color,
-    float width)
-{
-    std::lock_guard<std::recursive_mutex> guard(_mutex);
-    return _world_scene.drawCircle(center, radius, color, width);
-}
-
-sim_env::WorldViewer::Handle sim_env::Box2DWorldViewer::Box2DImageRenderer::drawVoxelGrid(const grid::VoxelGrid<float, Eigen::Vector4f>& grid,
-    const WorldViewer::Handle& old_handle)
-{
-    std::lock_guard<std::recursive_mutex> guard(_mutex);
-    return _world_scene.drawVoxelGrid(grid, old_handle);
-}
-
-bool sim_env::Box2DWorldViewer::Box2DImageRenderer::renderImage(const std::string& filename, unsigned int width, unsigned int height,
-    bool include_drawings)
-{
-    std::lock_guard<std::recursive_mutex> guard(_mutex);
-    return _world_scene.renderImage(filename, width, height, include_drawings, _render_region);
-}
-
-void sim_env::Box2DWorldViewer::Box2DImageRenderer::resetCamera()
-{
-    std::lock_guard<std::recursive_mutex> guard(_mutex);
-    _render_region = _world_scene.getWorldBounds();
-}
-
-void sim_env::Box2DWorldViewer::Box2DImageRenderer::setColor(const std::string& name, const Eigen::Vector4f& color)
-{
-    std::lock_guard<std::recursive_mutex> guard(_mutex);
-    _world_scene.setColor(name, color);
-}
-
-void sim_env::Box2DWorldViewer::Box2DImageRenderer::setVisible(const std::string& name, bool visible)
-{
-    std::lock_guard<std::recursive_mutex> guard(_mutex);
-    _world_scene.setObjectVisible(name, visible);
-}
 
 //////////////////////////////////////// Box2DWorldViewer ////////////////////////////////////////
 sim_env::Box2DWorldViewer::Box2DWorldViewer(sim_env::Box2DWorldPtr world)
@@ -1794,15 +1720,6 @@ sim_env::WorldViewer::Handle sim_env::Box2DWorldViewer::drawVoxelGrid(const grid
     const WorldViewer::Handle& old_handle)
 {
     return _world_view->getBox2DScene()->drawVoxelGrid(grid, old_handle);
-}
-
-sim_env::WorldViewer::ImageRendererPtr sim_env::Box2DWorldViewer::createImageRenderer()
-{
-    if (_world.expired()) {
-        log("Could not access Box2DWorld. Can not create ImageRenderer", "[sim_env::Box2DWorldViewer]", Logger::LogLevel::Error);
-        return nullptr;
-    }
-    return std::make_shared<sim_env::Box2DWorldViewer::Box2DImageRenderer>(_world.lock());
 }
 
 bool sim_env::Box2DWorldViewer::renderImage(const std::string& filename, unsigned int width, unsigned int height,

@@ -18,8 +18,13 @@ find_package(Boost REQUIRED COMPONENTS system filesystem)
 find_package(Threads REQUIRED)
 # find_package(yaml-cpp REQUIRED)
 find_package(PkgConfig REQUIRED)
+# PNG and JPEG are required for saving images using CImg
+find_package(PNG REQUIRED)
+find_package(JPEG REQUIRED)
 pkg_check_modules(YAML yaml-cpp REQUIRED)
 
+# CImg does not seem to ship any pkg-info file or Find*.cmake, so we add the include path manually:
+set(CImg_INCLUDE_DIRS "/usr/include/CImg.h")
 # TODO the following line shouldn't be here. BUt linking without catkin_make does not work otherwise
 # link_directories("/home/joshua/projects/planning_catkin/devel/lib/")
 ## Uncomment this if the package has a setup.py. This macro ensures
@@ -40,7 +45,7 @@ catkin_package(
         INCLUDE_DIRS include
         LIBRARIES box2d_sim_env
         CATKIN_DEPENDS box2d_catkin sim_env
-        DEPENDS EIGEN3 YAML Boost 
+        DEPENDS EIGEN3 YAML Boost PNG JPEG
 )
 
 ###########
@@ -63,7 +68,8 @@ set(SOURCE_FILES
         src/sim_env/Box2DWorld.cpp
         src/sim_env/Box2DIOUtils.cpp
         src/sim_env/Box2DWorldViewer.cpp
-        src/sim_env/Box2DController.cpp)
+        src/sim_env/Box2DController.cpp
+        src/sim_env/Box2DImageRenderer.cpp)
 
 ## Additional Qt specific things (in case we need it)
  set (MOC_HEADERS include/sim_env/Box2DWorldViewer.h)
@@ -80,6 +86,9 @@ set(SOURCE_FILES
          ${Eigen3_INCLUDE_DIRS}
          ${catkin_INCLUDE_DIRS}
          ${Boost_INCLUDE_DIRS}
+         ${PNG_INCLUDE_DIRS}
+         ${JPEG_INCLUDE_DIRS}
+         ${CImg_INCLUDE_DIRS}
          ${CMAKE_BINARY_DIR})
 
 ## Declare a C++ library
@@ -102,6 +111,8 @@ set(SOURCE_FILES
         sim_env
         ${catkin_LIBRARIES}
         yaml-cpp
+        png
+        jpeg
         ${QT_LIBRARIES}
         ${CMAKE_THREAD_LIBS_INIT}
  )
@@ -114,6 +125,8 @@ target_link_libraries(box2d_sim_env_manual_test
         sim_env
         ${catkin_LIBRARIES}
         ${Boost_LIBRARIES}
+        png
+        jpeg
         yaml-cpp
         ${QT_LIBRARIES}
         )
