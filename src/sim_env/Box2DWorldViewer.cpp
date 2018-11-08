@@ -533,6 +533,9 @@ bool sim_env::viewer::Box2DScene::renderImage(const std::string& filename, unsig
             }
         }
     }
+    Box2DWorldPtr world = _world.lock();
+    assert(world);
+    std::lock_guard<std::recursive_mutex> world_lock(world->getMutex()); // ensure that the world isn't changed while rendering
     QImage image(width, height, QImage::Format_RGB32);
     image.fill(QColor(255, 255, 255));
     { // score so that QPainter is destroyed again
@@ -725,6 +728,13 @@ void sim_env::viewer::Box2DScene::synchronizeScene()
         _items_to_remove.pop();
     }
     update();
+}
+
+std::recursive_mutex& sim_env::viewer::Box2DScene::getWorldMutex() const
+{
+    auto world = _world.lock();
+    assert(world);
+    return world->getMutex();
 }
 
 sim_env::LoggerPtr sim_env::viewer::Box2DScene::getLogger() const
@@ -1548,6 +1558,12 @@ void sim_env::viewer::Box2DWorldView::wheelEvent(QWheelEvent* event)
     } else {
         QGraphicsView::wheelEvent(event);
     }
+}
+
+void sim_env::viewer::Box2DWorldView::paintEvent(QPaintEvent* event)
+{
+    std::lock_guard<std::recursive_mutex> world_lock(_scene->getWorldMutex());
+    QGraphicsView::paintEvent(event);
 }
 
 void sim_env::viewer::Box2DWorldView::scaleView(double scale_factor)
