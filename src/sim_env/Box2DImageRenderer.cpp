@@ -108,6 +108,7 @@ bool sim_env::Box2DImageRenderer::renderImage(const std::string& filename, unsig
     bool include_drawings)
 {
     std::lock_guard<std::recursive_mutex> guard(_mutex);
+    std::lock_guard<std::recursive_mutex> world_guard(_world->getMutex());
     // 1. compute projection matrix
     sim_env::BoundingBox target_region = _drawing_region;
     if (_camera_on_world) {

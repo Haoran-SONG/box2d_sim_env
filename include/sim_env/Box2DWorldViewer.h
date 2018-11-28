@@ -162,6 +162,7 @@ namespace viewer {
         // Return bounds so that all robots/objects (and optionally all other drawings) are within these bounds.
         QRectF getDrawingBounds(bool include_drawings) const;
         void synchronizeScene();
+        std::recursive_mutex& getWorldMutex() const;
 
     signals:
         void objectSelected(sim_env::ObjectWeakPtr object);
@@ -306,6 +307,7 @@ namespace viewer {
 
     protected:
         void wheelEvent(QWheelEvent* event) override;
+        void paintEvent(QPaintEvent* event) override;
         void scaleView(double scale_factor);
         // Variables
         Box2DScene* _scene;
