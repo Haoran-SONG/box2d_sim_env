@@ -24,7 +24,7 @@ find_package(JPEG REQUIRED)
 pkg_check_modules(YAML yaml-cpp REQUIRED)
 
 # CImg does not seem to ship any pkg-info file or Find*.cmake, so we add the include path manually:
-set(CImg_INCLUDE_DIRS "/usr/include/CImg.h")
+set(CImg_INCLUDE_DIRS "/usr/include/")
 # TODO the following line shouldn't be here. BUt linking without catkin_make does not work otherwise
 # link_directories("/home/joshua/projects/planning_catkin/devel/lib/")
 ## Uncomment this if the package has a setup.py. This macro ensures
@@ -56,6 +56,7 @@ catkin_package(
 set(CMAKE_CXX_STANDARD 11)
 add_definitions(-std=gnu++11)
 add_definitions(-Wno-deprecated-register)
+add_definitions(-Wno-sign-compare)
 set(CMAKE_CXX_FLAGS_DEBUG "-g -O0 -Wall")
 set(CMAKE_CXX_FLAGS_RELEASE "-O3 -Wall")
 #set(CMAKE_VERBOSE_MAKEFILE on)
