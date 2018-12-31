@@ -135,6 +135,36 @@ bool sim_env::Box2DImageRenderer::renderImage(const std::string& filename, unsig
     return true;
 }
 
+// Only belong to the sim_env::Box2DImageRenderer class.
+bool sim_env::Box2DImageRenderer::renderState(cimg_library::CImg<unsigned char>& image,
+                                              unsigned int width, unsigned int height, bool include_drawings) {
+    std::lock_guard<std::recursive_mutex> guard(_mutex);
+    std::lock_guard<std::recursive_mutex> world_guard(_world->getMutex());
+    // 1. compute projection matrix
+    sim_env::BoundingBox target_region = _drawing_region;
+    if (_camera_on_world) {
+        target_region = _world_region;
+    }
+    assert(target_region.getWidth() > 0);
+    assert(target_region.getHeight() > 0);
+    float scaling_factor = std::min(width / target_region.getWidth(), height / target_region.getHeight());
+    Eigen::Affine2f to_image_tf;
+    to_image_tf = Eigen::Scaling(scaling_factor) * Eigen::Translation<float, 2>(-target_region.min_corner[0], -target_region.min_corner[1]);
+    // image is passed in
+    // cimg_library::CImg<unsigned char> image(width, height, 1, 3, 255);
+
+    // 3. draw objects and robot
+    renderObjects(image, to_image_tf);
+    // 4. optionally draw additional drawings
+    if (include_drawings) {
+        renderSpheres(image, to_image_tf, scaling_factor);
+        renderLines(image, to_image_tf);
+        renderFrames(image, to_image_tf);
+        renderBoxes(image, to_image_tf);
+    }
+    return true;
+}
+
 void sim_env::Box2DImageRenderer::setVisible(const std::string& name, bool visible)
 {
     std::lock_guard<std::recursive_mutex> guard(_mutex);
@@ -207,6 +237,23 @@ void sim_env::Box2DImageRenderer::removeAllDrawings()
     _frames.clear();
 }
 
+void sim_env::Box2DImageRenderer::initGroupColors(const std::vector<float> &group_colors,
+                                                  const std::map<std::string, unsigned int> &group_objects) {
+    unsigned long idx, color_idx;
+    Eigen::Vector4f color;
+    color[3] = 1.0f;
+    for (auto& elem : group_objects) {
+        idx = elem.second;
+        color_idx = idx * 3;
+        color[0] = group_colors.at(color_idx);
+        color[1] = group_colors.at(color_idx+1);
+        color[2] = group_colors.at(color_idx+2);
+        setColor(elem.first, color);
+    }
+}
+
+
+
 void sim_env::Box2DImageRenderer::extendBounds(const Line& line)
 {
     float minx = std::min(line.start[0], line.end[0]);
@@ -217,22 +264,6 @@ void sim_env::Box2DImageRenderer::extendBounds(const Line& line)
     _drawing_region.min_corner[1] = std::min(_drawing_region.min_corner[1], miny);
     _drawing_region.max_corner[0] = std::max(_drawing_region.max_corner[0], maxx);
     _drawing_region.max_corner[1] = std::max(_drawing_region.max_corner[1], maxy);
-}
-
-void sim_env::Box2DImageRenderer::renderObjects(cimg_library::CImg<unsigned char>& cimg, const Eigen::Affine2f& to_image_frame) const
-{
-    // first render objects
-    std::vector<sim_env::Box2DObjectPtr> objects;
-    _world->getBox2DObjects(objects);
-    for (auto object : objects) {
-        renderObject(cimg, to_image_frame, object);
-    }
-    // then render robots
-    std::vector<sim_env::Box2DRobotPtr> robots;
-    _world->getBox2DRobots(robots);
-    for (auto robot : robots) {
-        renderObject(cimg, to_image_frame, robot->getBox2DObject());
-    }
 }
 
 // render all spheres on the given image
@@ -336,5 +367,21 @@ void sim_env::Box2DImageRenderer::renderObject(cimg_library::CImg<unsigned char>
             }
             cimg.draw_polygon(cimg_polygon, drawing_info.color, drawing_info.opacity);
         }
+    }
+}
+
+void sim_env::Box2DImageRenderer::renderObjects(cimg_library::CImg<unsigned char>& cimg, const Eigen::Affine2f& to_image_frame) const
+{
+    // first render objects
+    std::vector<sim_env::Box2DObjectPtr> objects;
+    _world->getBox2DObjects(objects);
+    for (auto object : objects) {
+        renderObject(cimg, to_image_frame, object);
+    }
+    // then render robots
+    std::vector<sim_env::Box2DRobotPtr> robots;
+    _world->getBox2DRobots(robots);
+    for (auto robot : robots) {
+        renderObject(cimg, to_image_frame, robot->getBox2DObject());
     }
 }
