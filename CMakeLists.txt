@@ -19,6 +19,7 @@ find_package(Threads REQUIRED)
 # find_package(yaml-cpp REQUIRED)
 find_package(PkgConfig REQUIRED)
 # PNG and JPEG are required for saving images using CImg
+find_package(OpenCV REQUIRED)
 find_package(PNG REQUIRED)
 find_package(JPEG REQUIRED)
 pkg_check_modules(YAML yaml-cpp REQUIRED)
@@ -88,6 +89,7 @@ set(SOURCE_FILES
          ${Boost_INCLUDE_DIRS}
          ${PNG_INCLUDE_DIRS}
          ${JPEG_INCLUDE_DIRS}
+         ${OpenCV_INCLUDE_DIRS}
          ${CImg_INCLUDE_DIRS}
          ${CMAKE_BINARY_DIR})
 
@@ -113,6 +115,7 @@ set(SOURCE_FILES
         yaml-cpp
         png
         jpeg
+        ${OpenCV_LIB_DIR}
         ${QT_LIBRARIES}
         ${CMAKE_THREAD_LIBS_INIT}
  )
