@@ -91,7 +91,7 @@ protected:
          * @param body - body to get the link for
          * @return - shared pointer to the link, or null_ptr
          */
-    virtual LinkPtr getLink(b2Body* body) = 0;
+    virtual Box2DLinkPtr getBox2DLink(b2Body* body) = 0;
 };
 
 /**
@@ -169,6 +169,8 @@ public:
     Eigen::Vector2f getCenterOfMass() const;
     void getCenterOfMass(Eigen::Vector2f& com) const;
     float getInertia() const;
+    // return the inertia w.r.t. to the center of mass
+    float getCOMInertia() const;
     Box2DWorldPtr getBox2DWorld() const;
     BoundingBox getLocalBoundingBox() const;
     void setEnabled(bool b_enable) override;
@@ -206,7 +208,7 @@ protected:
     // Adds the body of this link to the given vector - used for collision checks
     void getBodies(std::vector<b2Body*>& bodies) override;
     // returns a pointer to this link
-    LinkPtr getLink(b2Body* body) override;
+    Box2DLinkPtr getBox2DLink(b2Body* body) override;
 
 private:
     Box2DWorldWeakPtr _world;
@@ -413,6 +415,7 @@ public:
     float getMass() const override;
     /**
          * Returns the moment of inertia of this object (given the current configuration).
+         * TODO specify frame
          * @return moment of inertia
          */
     float getInertia() const override;
@@ -432,7 +435,7 @@ protected:
     Box2DJointPtr getBox2DJoint(unsigned int idx);
     // puts all link bodies into the given list (for collision checking)
     void getBodies(std::vector<b2Body*>& bodies) override;
-    LinkPtr getLink(b2Body* body) override;
+    Box2DLinkPtr getBox2DLink(b2Body* body) override;
     void updateBodyVelocities(const Eigen::VectorXf& all_dof_velocities);
 
     // these can be overwritten by Box2DRobot
@@ -556,7 +559,7 @@ protected:
     void control(float timestep);
     // retrieve all box2d bodies (for collision checking)
     void getBodies(std::vector<b2Body*>& bodies) override;
-    LinkPtr getLink(b2Body* body) override;
+    Box2DLinkPtr getBox2DLink(b2Body* body) override;
 
 private:
     bool _destroyed;
@@ -614,19 +617,27 @@ public:
     bool checkCollision(Box2DCollidablePtr collidable_a, Box2DCollidablePtr collidable_b, std::vector<Contact>& contacts);
 
     /**
-         * Checks whether both provided collidables collide.
+         * Checks whether the provided collidable collides.
          * @param collidable_a
          * @return true iff collidable is in collision with any other object
          */
     bool checkCollision(Box2DCollidablePtr collidable);
 
     /**
-         * Checks whether both provided collidables collide.
+         * Checks whether the provided collidable collides.
          * @param collidable_a
          * @param contacts - all detected contacts are stored in this list
          * @return true iff collidable is in collision with any other object
          */
     bool checkCollision(Box2DCollidablePtr collidable, std::vector<Contact>& contacts);
+
+    /**
+     * Checks whether the provided collidable collides with any link and returns all these links in links.
+     *  @param collidable
+     *  @param links - will contain all links colliding with collidable
+     *  @return true iff collidable in collision with any link
+     */
+    bool checkCollision(Box2DCollidablePtr collidable, std::vector<Box2DLinkPtr>& links);
 
     /**
          * Checks whether collidable_a is in collision with any of the provided collidables
@@ -675,7 +686,7 @@ private:
     float _scale;
     typedef std::unordered_map<b2Body*, std::vector<Contact>> ContactMap;
     std::unordered_map<b2Body*, ContactMap> _body_contact_maps;
-    std::unordered_map<b2Body*, LinkWeakPtr> _body_to_link_map;
+    std::unordered_map<b2Body*, Box2DLinkWeakPtr> _body_to_link_map;
     // a list of contacts registered during a physics propagation
     typedef std::tuple<b2Fixture*, b2Fixture*, Contact> ContactRecord;
     std::vector<ContactRecord> _registered_contacts;
@@ -687,7 +698,7 @@ private:
     bool areInContact(b2Body* body_a, b2Body* body_b) const;
     bool hasContacts(b2Body* body) const;
     Box2DWorldPtr getWorld();
-    LinkPtr getLink(b2Body* body, Box2DCollidablePtr collidable = nullptr);
+    Box2DLinkPtr getBox2DLink(b2Body* body, Box2DCollidablePtr collidable = nullptr);
 };
 
 /**
@@ -773,6 +784,7 @@ public:
     bool checkCollision(ObjectPtr object_a, LinkPtr link_b, std::vector<Contact>& contacts) override;
     bool checkCollision(ObjectPtr object) override;
     bool checkCollision(ObjectPtr object, std::vector<Contact>& contacts) override;
+    bool checkCollision(ObjectPtr object, std::vector<ObjectPtr>& collidors) override;
     bool checkCollision(ObjectPtr object_a, const std::vector<ObjectPtr>& other_objects) override;
     bool checkCollision(ObjectPtr object_a, const std::vector<ObjectPtr>& other_objects,
         std::vector<Contact>& contacts) override;
@@ -812,7 +824,7 @@ public:
 protected:
     std::shared_ptr<b2World> getRawBox2DWorld();
     b2Body* getGroundBody();
-    LinkPtr getLink(b2Body* body);
+    Box2DLinkPtr getBox2DLink(b2Body* body);
 
 private:
     mutable std::recursive_mutex _world_mutex;
