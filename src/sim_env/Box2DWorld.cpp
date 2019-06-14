@@ -63,7 +63,7 @@ Box2DLink::Box2DLink(const Box2DLinkDescription& link_desc, Box2DWorldPtr world,
     body_def.type = is_static ? b2_staticBody : b2_dynamicBody;
     body_def.userData = new Box2DBodyUserData(_name, _object_name);
     _body = box2d_world->CreateBody(&body_def);
-    // run over polygons and create Box2D shape definitions + compute area
+    // run over polygons and create Box2D shape definitions, compute area and union of all polygons
     float area = 0.0f;
     std::vector<b2PolygonShape> shape_defs;
     _local_aabb.min_corner[0] = std::numeric_limits<float>::max();
@@ -72,11 +72,14 @@ Box2DLink::Box2DLink(const Box2DLinkDescription& link_desc, Box2DWorldPtr world,
     _local_aabb.max_corner[1] = std::numeric_limits<float>::lowest();
     _local_aabb.min_corner[2] = 0.0f;
     _local_aabb.max_corner[2] = 0.0f;
+    typedef bg::model::polygon<bg::model::d2::point_xy<float>, false> BoostPolygon;
+    typedef bg::model::multi_polygon<BoostPolygon> MultiPolygon;
+    MultiPolygon link_polygon;
     for (auto& polygon : link_desc.polygons) {
         b2PolygonShape b2_shape; // shape type for box2d
         std::vector<b2Vec2> b2_polygon; // temporal buffer for vertices
         // boost polygon for area, 'false' template parameter stands for counter clockwise (box2d standard)
-        bg::model::polygon<bg::model::d2::point_xy<float>, false> boost_polygon;
+        BoostPolygon boost_polygon;
         assert(polygon.size() % 2 == 0);
         // run over this polygon
         for (unsigned int i = 0; i < polygon.size() / 2; ++i) {
@@ -90,6 +93,10 @@ Box2DLink::Box2DLink(const Box2DLinkDescription& link_desc, Box2DWorldPtr world,
         }
         bg::correct(boost_polygon); // ensures that the polygon fulfills all criteria required for a valid boost polygon
         _boost_polygons.push_back(boost_polygon);
+        // merge with global link geometry
+        MultiPolygon tmp_polygon;
+        boost::geometry::union_(boost_polygon, link_polygon, tmp_polygon);
+        link_polygon = tmp_polygon;
         // compute the area (scaled)
         area += world->getScale() * world->getScale() * bg::area(boost_polygon);
         // add the shape
@@ -97,6 +104,16 @@ Box2DLink::Box2DLink(const Box2DLinkDescription& link_desc, Box2DWorldPtr world,
         shape_defs.push_back(b2_shape);
     }
     assert(area > 0.0);
+    // run over merged polygon to extract global geometry
+    for (auto& polygon : link_polygon) {
+        _link_geometries.emplace_back(Geometry());
+        // extract hull of polygon
+        auto object_hull = bg::exterior_ring(polygon);
+        for (auto& point : object_hull) {
+            _link_geometries.back().vertices.push_back(Eigen::Vector3f(point.get<0>(), point.get<1>(), 0.0f));
+        }
+        _link_geometries.back().is_polygon = true;
+    }
     // Now that we have the area and all shapes, we can create fixtures
     for (b2PolygonShape& shape_def : shape_defs) {
         b2FixtureDef fixture_def;
@@ -107,6 +124,10 @@ Box2DLink::Box2DLink(const Box2DLinkDescription& link_desc, Box2DWorldPtr world,
         fixture_def.shape = &shape_def;
         _body->CreateFixture(&fixture_def);
     }
+    // save friction coefficients
+    _contact_friction = link_desc.contact_friction;
+    _ground_torque_integral = link_desc.ground_torque_integral;
+    _ground_friction = link_desc.ground_friction;
     // Finally create a friction joint between this link and the ground plane
     // TODO we probably don't want friction between the ground and fingers -> make friction optional
     float gravity = world->getGravity();
@@ -116,10 +137,13 @@ Box2DLink::Box2DLink(const Box2DLinkDescription& link_desc, Box2DWorldPtr world,
     friction_joint_def.bodyA = world->getGroundBody();
     friction_joint_def.bodyB = _body;
     friction_joint_def.collideConnected = false;
-    friction_joint_def.maxForce = link_desc.trans_friction * _body->GetMass() * gravity;
-    friction_joint_def.maxTorque = link_desc.rot_friction * _body->GetMass() * gravity;
-    _ground_friction = link_desc.trans_friction;
-    _friction_ratio = link_desc.rot_friction / link_desc.trans_friction;
+    // the maximal friction force is = mu * m * g, where mu is the friction coefficient
+    friction_joint_def.maxForce = _ground_friction * gravity * _body->GetMass();
+    // the maximal torque is t = mu * \int_A ||x|| p(x) dA, where mu is the friction coefficient,
+    // A the support region, p(x) the pressure distribution, dA the differential element and x the position
+    // of dA w.r.t center of mass (rotation). Since p(x) is unknown, we take the whole integral as a tunable parameter.
+    // Due to our scaling, we need to scale this value by scale^2 (once for gravity constant, and once for distance)
+    friction_joint_def.maxTorque = _ground_friction * _ground_torque_integral * world->getScale() * world->getScale();
     _friction_joint = box2d_world->CreateJoint(&friction_joint_def);
 }
 
@@ -236,11 +260,6 @@ BoundingBox Box2DLink::getLocalBoundingBox() const
     return _local_aabb;
 }
 
-float Box2DLink::getGroundFriction() const
-{
-    return _ground_friction;
-}
-
 WorldPtr Box2DLink::getWorld() const
 {
     return getBox2DWorld();
@@ -281,23 +300,52 @@ void Box2DLink::registerParentJoint(Box2DJointPtr joint)
     _parent_joint = joint;
 }
 
-void Box2DLink::getGeometry(std::vector<std::vector<Eigen::Vector2f>>& geometry) const
+std::vector<Geometry> Box2DLink::getGeometries() const
 {
-    // TODO we could/should just read this from the boost polygons
+    std::vector<Geometry> geoms;
+    getGeometries(geoms);
+    return geoms;
+}
+
+void Box2DLink::getGeometries(std::vector<Geometry>& geoms) const
+{
+    Box2DWorldPtr world = getBox2DWorld();
+    Box2DWorldLock lock(world->getMutex());
+    Eigen::Vector3f offset(world->getInverseScale() * _local_origin_offset(0),
+        world->getInverseScale() * _local_origin_offset(1), 0.0f);
+    for (const auto& geom : _link_geometries) {
+        geoms.emplace_back(Geometry());
+        geoms.back().is_polygon = true;
+        for (const auto& point : geom.vertices) {
+            geoms.back().vertices.emplace_back(point - offset);
+        }
+    }
+}
+
+std::vector<Geometry> Box2DLink::getFixtureGeometries() const
+{
+    std::vector<Geometry> geoms;
+    getFixtureGeometries(geoms);
+    return geoms;
+}
+
+void Box2DLink::getFixtureGeometries(std::vector<Geometry>& geoms) const
+{
     Box2DWorldPtr world = getBox2DWorld();
     Box2DWorldLock lock(world->getMutex());
     b2Fixture* fixture = _body->GetFixtureList();
     while (fixture) {
         b2Shape* shape = fixture->GetShape();
-        std::vector<Eigen::Vector2f> polygon;
+        Geometry polygon;
+        polygon.is_polygon = true;
         if (shape->GetType() == b2Shape::Type::e_polygon) {
             b2PolygonShape* polygon_shape = static_cast<b2PolygonShape*>(shape);
-            for (int32 v = 0; v < polygon_shape->GetVertexCount(); ++v) {
-                b2Vec2 point = polygon_shape->GetVertex(v) - _local_origin_offset;
-                Eigen::Vector2f eigen_point(world->getInverseScale() * point.x, world->getInverseScale() * point.y);
-                polygon.push_back(eigen_point);
+            for (int32 v = 0; v < polygon_shape->m_count; ++v) {
+                b2Vec2 point = polygon_shape->m_vertices[v] - _local_origin_offset;
+                Eigen::Vector3f eigen_point(world->getInverseScale() * point.x, world->getInverseScale() * point.y, 0.0f);
+                polygon.vertices.push_back(eigen_point);
             }
-            geometry.push_back(polygon);
+            geoms.push_back(polygon);
         } else {
             throw std::runtime_error("[sim_env::Box2DLink::getGeometry] Could not retrieve geometry. Box2D shape is not a polygon.");
         }
@@ -437,17 +485,65 @@ void Box2DLink::setMass(float mass)
     data.mass = mass;
     data.I = data.I * mass_ratio;
     _body->SetMassData(&data);
+    updateFrictionJoint();
 }
 
-void Box2DLink::setGroundFriction(float coeff)
+float Box2DLink::getGroundFrictionCoefficient() const
+{
+    return _ground_friction;
+}
+
+void Box2DLink::setGroundFrictionCoefficient(float mu)
+{
+    _ground_friction = mu;
+    updateFrictionJoint();
+}
+
+float Box2DLink::getGroundFrictionLimitTorque() const
+{
+    return _ground_friction * _ground_torque_integral;
+}
+
+float Box2DLink::getGroundFrictionLimitForce() const
+{
+    return _ground_friction * getMass() * Box2DWorld::GRAVITY;
+}
+
+void Box2DLink::setGroundFrictionTorqueIntegral(float val)
+{
+    _ground_torque_integral = val;
+    updateFrictionJoint();
+}
+
+float Box2DLink::getGroundFrictionTorqueIntegral() const
+{
+    return _ground_torque_integral;
+}
+
+void Box2DLink::updateFrictionJoint()
 {
     Box2DWorldPtr world = getBox2DWorld();
     Box2DWorldLock lock(world->getMutex());
     auto friction_joint = dynamic_cast<b2FrictionJoint*>(_friction_joint);
     float gravity = world->getGravity();
-    friction_joint->SetMaxForce(coeff * _body->GetMass() * gravity);
-    friction_joint->SetMaxTorque(_friction_ratio * coeff * _body->GetMass() * gravity);
-    _ground_friction = coeff;
+    friction_joint->SetMaxForce(_ground_friction * getMass() * gravity);
+    friction_joint->SetMaxTorque(_ground_friction * _ground_torque_integral * world->getScale() * world->getScale());
+}
+
+float Box2DLink::getContactFriction() const
+{
+    return _contact_friction;
+}
+
+void Box2DLink::setContactFriction(float mu)
+{
+    _contact_friction = mu;
+    // TODO invalidate existing contacts somehow?
+    b2Fixture* fixture = _body->GetFixtureList();
+    while (fixture) {
+        fixture->SetFriction(mu);
+        fixture = fixture->GetNext();
+    }
 }
 
 float Box2DLink::getInertia() const
@@ -1245,8 +1341,11 @@ Box2DObject::Box2DObject(const Box2DObjectDescription& obj_desc, Box2DWorldPtr w
         _y_dof_info.acceleration_limits[0] = std::numeric_limits<float>::lowest();
         _y_dof_info.acceleration_limits[1] = std::numeric_limits<float>::max();
         _theta_dof_info.dof_index = 2;
-        _theta_dof_info.position_limits[0] = std::numeric_limits<float>::lowest();
-        _theta_dof_info.position_limits[1] = std::numeric_limits<float>::max();
+        // _theta_dof_info.position_limits[0] = std::numeric_limits<float>::lowest();
+        // _theta_dof_info.position_limits[1] = std::numeric_limits<float>::max();
+        _theta_dof_info.cyclic = true;
+        _theta_dof_info.position_limits[0] = -M_PI;
+        _theta_dof_info.position_limits[1] = M_PI;
         _theta_dof_info.velocity_limits[0] = std::numeric_limits<float>::lowest();
         _theta_dof_info.velocity_limits[1] = std::numeric_limits<float>::max();
         _theta_dof_info.acceleration_limits[0] = std::numeric_limits<float>::lowest();
@@ -1733,6 +1832,11 @@ LinkPtr Box2DObject::getBaseLink()
     return _base_link;
 }
 
+LinkConstPtr Box2DObject::getConstBaseLink() const
+{
+    return _base_link;
+}
+
 Box2DLinkPtr Box2DObject::getBox2DBaseLink()
 {
     return _base_link;
@@ -1815,11 +1919,6 @@ float Box2DObject::getMass() const
 BoundingBox Box2DObject::getLocalAABB() const
 {
     return _local_bounding_box;
-}
-
-float Box2DObject::getGroundFriction() const
-{
-    return _base_link->getGroundFriction();
 }
 
 void Box2DObject::getBox2DLinks(std::vector<Box2DLinkPtr>& links)
@@ -2163,6 +2262,11 @@ LinkPtr Box2DRobot::getBaseLink()
     return _robot_object->getBaseLink();
 }
 
+LinkConstPtr Box2DRobot::getConstBaseLink() const
+{
+    return _robot_object->getConstBaseLink();
+}
+
 unsigned int Box2DRobot::getNumDOFs() const
 {
     return _robot_object->getNumDOFs();
@@ -2318,11 +2422,6 @@ float Box2DRobot::getInertia() const
 BoundingBox Box2DRobot::getLocalAABB() const
 {
     return _robot_object->getLocalAABB();
-}
-
-float Box2DRobot::getGroundFriction() const
-{
-    return _robot_object->getGroundFriction();
 }
 
 void Box2DRobot::getBox2DLinks(std::vector<Box2DLinkPtr>& links)
@@ -2776,10 +2875,11 @@ void Box2DCollisionChecker::updateContactCache()
     //                              log_prefix);
     Box2DWorldLock lock(world->getMutex());
     _body_contact_maps.clear();
-    world->saveState();
-    world->setToRest();
-    world->stepPhysics(2, false, false); // for some reason we need to propagate twice
+    // world->saveState();
+    // world->setToRest();
+    // world->stepPhysics(2, false, false); // for some reason we need to propagate twice
     auto box2d_world = world->getRawBox2DWorld();
+    box2d_world->UpdateContacts();
     auto contact = box2d_world->GetContactList();
     while (contact) {
         if (contact->IsTouching() && contact->IsEnabled()) {
@@ -2790,7 +2890,7 @@ void Box2DCollisionChecker::updateContactCache()
         }
         contact = contact->GetNext();
     }
-    world->restoreState();
+    // world->restoreState();
     _cache_invalid = false;
 }
 

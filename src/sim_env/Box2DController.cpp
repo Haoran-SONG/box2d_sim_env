@@ -1,53 +1,74 @@
 //
 // Created by joshua on 7/28/17.
 //
-#include <queue>
 #include "sim_env/Box2DController.h"
 #include "sim_env/utils/EigenUtils.h"
+#include <queue>
 
 using namespace sim_env;
 
-Box2DRobotVelocityController::Box2DRobotVelocityController(Box2DRobotPtr robot) {
+Box2DRobotVelocityController::Box2DRobotVelocityController(Box2DRobotPtr robot)
+{
     _box2d_robot = robot;
     _b_target_available = false;
 }
 
-Box2DRobotVelocityController::~Box2DRobotVelocityController() {
+Box2DRobotVelocityController::~Box2DRobotVelocityController()
+{
 }
 
-unsigned int Box2DRobotVelocityController::getTargetDimension() {
+void Box2DRobotVelocityController::setPositionProjectionFn(PositionProjectionFn pos_constraint)
+{
+    auto robot = _box2d_robot.lock();
+    assert(robot);
+    auto world = robot->getWorld();
+    auto logger = world->getLogger();
+    logger->logErr("Position projection not supported for Box2DVelocityController."
+                   "Use a position controller to constrain robot positions",
+        "[Box2DRobotVelocityController::setPositionProjectionFn]");
+}
+
+void Box2DRobotVelocityController::setVelocityProjectionFn(VelocityProjectionFn vel_constraint)
+{
+    _vel_proj_fn = vel_constraint;
+}
+
+unsigned int Box2DRobotVelocityController::getTargetDimension() const
+{
     Box2DRobotPtr robot = lockRobot();
     return robot->getNumActiveDOFs();
 }
 
-void Box2DRobotVelocityController::setTargetVelocity(const Eigen::VectorXf& velocity) {
+void Box2DRobotVelocityController::setTargetVelocity(const Eigen::VectorXf& velocity)
+{
 
     Box2DRobotPtr robot = lockRobot();
     LoggerPtr logger = robot->getWorld()->getLogger();
     if (velocity.size() != robot->getNumActiveDOFs()) {
         throw std::runtime_error("[sim_env::Box2DRobotVelocityController::setTargetVelocity]"
-                                         "Provided target velocity has invalid dimension.");
+                                 "Provided target velocity has invalid dimension.");
     }
     _target_velocity = velocity;
     utils::eigen::ScalingResult scaling_result = utils::eigen::scaleToLimits(_target_velocity,
-                                                                             robot->getDOFVelocityLimits());
+        robot->getDOFVelocityLimits());
     if (scaling_result == utils::eigen::ScalingResult::Failure) {
         logger->logErr("Could not scale input velocity to limits.",
-                       "[sim_env::Box2DRObotVelocityController::setTargetVelocity]");
+            "[sim_env::Box2DRObotVelocityController::setTargetVelocity]");
         // TODO do we want to throw an exception here?
     }
-//    std::stringstream ss;
-//    ss << "Target velocity is " << _target_velocity.transpose();
-//    logger->logDebug(ss.str());
+    //    std::stringstream ss;
+    //    ss << "Target velocity is " << _target_velocity.transpose();
+    //    logger->logDebug(ss.str());
     _b_target_available = true;
 }
 
 bool Box2DRobotVelocityController::control(const Eigen::VectorXf& positions,
-                                           const Eigen::VectorXf& velocities,
-                                           float timestep,
-                                           RobotConstPtr robot,
-                                           Eigen::VectorXf& output) {
-//    return controlArm(positions, velocities, timestep, robot, output);
+    const Eigen::VectorXf& velocities,
+    float timestep,
+    RobotConstPtr robot,
+    Eigen::VectorXf& output)
+{
+    //    return controlArm(positions, velocities, timestep, robot, output);
     std::string prefix("[sim_env::Box2DRobotVelocityController::control]");
     LoggerPtr logger = getLogger();
     if (not _b_target_available) {
@@ -59,9 +80,14 @@ bool Box2DRobotVelocityController::control(const Eigen::VectorXf& positions,
     if (robot != box2d_robot) {
         // check whether we have the correct robot
         logger->logErr("The provided robot is different from the robot this controller is created for.",
-                       prefix);
+            prefix);
         return false;
     }
+    Eigen::VectorXf target_velocity(_target_velocity);
+    if (_vel_proj_fn) {
+        _vel_proj_fn(target_velocity, robot);
+    }
+
     Eigen::VectorXi active_dofs = box2d_robot->getActiveDOFs();
     Eigen::MatrixX2f acceleration_limits = box2d_robot->getDOFAccelerationLimits();
     output.resize(active_dofs.size());
@@ -91,10 +117,11 @@ bool Box2DRobotVelocityController::control(const Eigen::VectorXf& positions,
 }
 
 bool Box2DRobotVelocityController::controlArm(const Eigen::VectorXf& positions,
-                                              const Eigen::VectorXf& velocities,
-                                              float timestep,
-                                              RobotConstPtr robot,
-                                              Eigen::VectorXf& output) {
+    const Eigen::VectorXf& velocities,
+    float timestep,
+    RobotConstPtr robot,
+    Eigen::VectorXf& output)
+{
     std::string prefix("[sim_env::Box2DRobotVelocityController::control]");
     LoggerPtr logger = getLogger();
     if (not _b_target_available) {
@@ -106,7 +133,7 @@ bool Box2DRobotVelocityController::controlArm(const Eigen::VectorXf& positions,
     if (robot != box2d_robot) {
         // check whether we have the correct robot
         logger->logErr("The provided robot is different from the robot this controller is created for.",
-                       prefix);
+            prefix);
         return false;
     }
     Eigen::VectorXi active_dofs = box2d_robot->getActiveDOFs();
@@ -126,7 +153,7 @@ bool Box2DRobotVelocityController::controlArm(const Eigen::VectorXf& positions,
         output[i] = mass_inertia * accel; // make it a force / torque
     }
     Eigen::Vector2f joint_accels(_target_velocity[robot->getNumBaseDOFs()] - velocities[robot->getNumBaseDOFs()],
-                                 _target_velocity[robot->getNumBaseDOFs() + 1] - velocities[robot->getNumBaseDOFs() + 1]);
+        _target_velocity[robot->getNumBaseDOFs() + 1] - velocities[robot->getNumBaseDOFs() + 1]);
     joint_accels = 1.0f / timestep * joint_accels;
     joint_accels[0] = std::min(acceleration_limits(robot->getNumBaseDOFs(), 1), std::max(joint_accels[0], acceleration_limits(robot->getNumBaseDOFs(), 0)));
     joint_accels[1] = std::min(acceleration_limits(robot->getNumBaseDOFs() + 1, 1), std::max(joint_accels[1], acceleration_limits(robot->getNumBaseDOFs() + 1, 0)));
@@ -139,11 +166,13 @@ bool Box2DRobotVelocityController::controlArm(const Eigen::VectorXf& positions,
     return true;
 }
 
-Box2DRobotPtr Box2DRobotVelocityController::getBox2DRobot() const {
+Box2DRobotPtr Box2DRobotVelocityController::getBox2DRobot() const
+{
     return lockRobot();
 }
 
-RobotPtr Box2DRobotVelocityController::getRobot() const {
+RobotPtr Box2DRobotVelocityController::getRobot() const
+{
     return lockRobot();
 }
 
@@ -172,17 +201,18 @@ Box2DRobotPtr Box2DRobotVelocityController::lockRobot() const {
     if (!robot) {
         LoggerPtr logger = DefaultLogger::getInstance();
         logger->logErr("Could not access Box2D robot. Instance does not exist anymore.",
-                       "[sim_env::Box2DRobotVelocityController::lockRobot]");
+            "[sim_env::Box2DRobotVelocityController::lockRobot]");
         throw std::logic_error("[sim_env::Box2DRobotVelocityController::lockRobot] Weak pointer to Box2DRobot not valid anymore.");
     }
     return robot;
 }
 
-float Box2DRobotVelocityController::computeKinematicChainInertia(JointConstPtr root_joint) const {
+float Box2DRobotVelocityController::computeKinematicChainInertia(JointConstPtr root_joint) const
+{
     Box2DJointConstPtr box2d_root_joint = std::dynamic_pointer_cast<const Box2DJoint>(root_joint);
     if (not box2d_root_joint) {
         throw std::logic_error("[sim_env::Box2DRobotVelocityController::computeKinematicChainInertia] Could not cast joint"
-                                       " to Box2DJoint. This controller only works with Box2DRobots!");
+                               " to Box2DJoint. This controller only works with Box2DRobots!");
     }
     Eigen::Vector2f root_axis = box2d_root_joint->getAxisPosition();
     float inertia = 0.0f;
@@ -194,7 +224,7 @@ float Box2DRobotVelocityController::computeKinematicChainInertia(JointConstPtr r
         Box2DLinkPtr child_link = std::dynamic_pointer_cast<Box2DLink>(current_joint->getChildLink());
         if (not child_link) {
             throw std::logic_error("[sim_env::Box2DRObotVelocityController::computeKinematicChainInertia]"
-            " Could not cast LinkPtr to Box2DLinkPtr. This means the robot is really messed up!");
+                                   " Could not cast LinkPtr to Box2DLinkPtr. This means the robot is really messed up!");
         }
         float distance = (child_link->getCenterOfMass() - root_axis).norm();
         inertia += child_link->getInertia() + child_link->getMass() * distance * distance; // parallel axis theorem
@@ -204,11 +234,12 @@ float Box2DRobotVelocityController::computeKinematicChainInertia(JointConstPtr r
 }
 
 void Box2DRobotVelocityController::computeDynamics(const Eigen::VectorXi& active_dofs,
-                                                   const Eigen::VectorXf& positions,
-                                                   const Eigen::VectorXf& velocities,
-                                                   Box2DRobotConstPtr robot,
-                                                   Eigen::Matrix2f& inertia_matrix,
-                                                   Eigen::Matrix2f& coriolis_matrix) const {
+    const Eigen::VectorXf& positions,
+    const Eigen::VectorXf& velocities,
+    Box2DRobotConstPtr robot,
+    Eigen::Matrix2f& inertia_matrix,
+    Eigen::Matrix2f& coriolis_matrix) const
+{
     Eigen::Array2f l_distances;
     Eigen::Array2f l_masses;
     Eigen::Array2f l_inertias;
@@ -233,7 +264,7 @@ void Box2DRobotVelocityController::computeDynamics(const Eigen::VectorXi& active
         l_inertias[joint_idx] = child_link->getInertia();
         joint_distances[joint_idx] = (prev_joint_axis - joint_axis).norm();
         m_inertias[joint_idx] = l_inertias[joint_idx] + l_distances[joint_idx] * l_distances[joint_idx] * l_masses[joint_idx];
-//        m_inertias[joint_idx] = 0.0f;
+        //        m_inertias[joint_idx] = 0.0f;
         prev_joint_axis = joint_axis;
     }
     Eigen::Array2f cosines;
@@ -244,9 +275,9 @@ void Box2DRobotVelocityController::computeDynamics(const Eigen::VectorXi& active
     }
     // set inertia matrix
     inertia_matrix(0, 0) = l_inertias[0] + l_masses[0] * l_distances[0] * l_distances[0] + m_inertias[0]
-            + l_inertias[1]
-            + l_masses[1] * (joint_distances[1] * joint_distances[1] + l_distances[1] * l_distances[1] + 2.0f * joint_distances[1] * l_distances[1] * cosines[1])
-            + m_inertias[1];
+        + l_inertias[1]
+        + l_masses[1] * (joint_distances[1] * joint_distances[1] + l_distances[1] * l_distances[1] + 2.0f * joint_distances[1] * l_distances[1] * cosines[1])
+        + m_inertias[1];
     inertia_matrix(0, 1) = l_inertias[1] + l_masses[1] * (l_distances[1] * l_distances[1] + joint_distances[1] * l_distances[1] * cosines[1]);
     inertia_matrix(1, 0) = inertia_matrix(0, 1);
     inertia_matrix(1, 1) = l_inertias[1] + l_masses[1] * l_distances[1] * l_distances[1];
@@ -258,11 +289,11 @@ void Box2DRobotVelocityController::computeDynamics(const Eigen::VectorXi& active
     coriolis_matrix(1, 1) = 0;
 }
 
-LoggerPtr Box2DRobotVelocityController::getLogger() const {
+LoggerPtr Box2DRobotVelocityController::getLogger() const
+{
     Box2DRobotPtr robot = _box2d_robot.lock();
     if (not robot) {
         return DefaultLogger::getInstance();
     }
     return robot->getWorld()->getLogger();
 }
-

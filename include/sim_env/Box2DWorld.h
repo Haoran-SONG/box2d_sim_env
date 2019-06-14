@@ -155,14 +155,28 @@ public:
     JointPtr getParentJoint() override;
     JointConstPtr getConstParentJoint() const override;
 
-    void getGeometry(std::vector<std::vector<Eigen::Vector2f>>& geometry) const;
+    /**
+      * Return the geometry of this link.
+      */
+    std::vector<Geometry> getGeometries() const override;
+    void getGeometries(std::vector<Geometry>& geoms) const override;
+
+    std::vector<Geometry> getFixtureGeometries() const;
+    void getFixtureGeometries(std::vector<Geometry>& geoms) const;
+    // void getGeometry(std::vector<std::vector<Eigen::Vector2f>>& geometry) const;
     void getBoostGeometry(std::vector<boost::geometry::model::polygon<boost::geometry::model::d2::point_xy<float>, false>>& polygons) const;
     void getWorldBoostGeometry(std::vector<boost::geometry::model::polygon<boost::geometry::model::d2::point_xy<float>, false>>& polygons) const;
     const std::vector<boost::geometry::model::polygon<boost::geometry::model::d2::point_xy<float>, false>>& getBoostGeometry() const;
     float getMass() const override;
-    float getGroundFriction() const override;
+    float getGroundFrictionCoefficient() const override;
+    void setGroundFrictionCoefficient(float mu) override;
+    float getGroundFrictionLimitTorque() const override;
+    float getGroundFrictionLimitForce() const override;
+    void setGroundFrictionTorqueIntegral(float val) override;
+    float getGroundFrictionTorqueIntegral() const override;
+    float getContactFriction() const override;
+    void setContactFriction(float coeff) override;
     void setMass(float mass) override;
-    void setGroundFriction(float coeff) override;
     void getCenterOfMass(Eigen::Vector3f& com) const override;
     void getLocalCenterOfMass(Eigen::Vector3f& com) const override;
     // Box2D specific
@@ -221,12 +235,15 @@ private:
     std::vector<Ball> _balls;
     Box2DJointWeakPtr _parent_joint;
     BoundingBox _local_aabb;
+    std::vector<Geometry> _link_geometries;
     std::vector<boost::geometry::model::polygon<boost::geometry::model::d2::point_xy<float>, false>> _boost_polygons;
+    float _ground_torque_integral;
     float _ground_friction;
-    float _friction_ratio;
+    float _contact_friction; // friction with other objects
     bool _destroyed;
     bool _enabled;
 
+    void updateFrictionJoint();
     /*
          * Recursively propagates a new absolute velocity of a parent frame through a kinematic chain.
          * @param lin_vel new linear velocity of the parent in global frame (scaled to box2d world)
@@ -388,6 +405,7 @@ public:
     LinkPtr getLink(const std::string& link_name) override;
     LinkConstPtr getConstLink(const std::string& link_name) const override;
     LinkPtr getBaseLink() override;
+    LinkConstPtr getConstBaseLink() const override;
 
     void getJoints(std::vector<JointPtr>& joints) override;
     void getBox2DJoints(std::vector<Box2DJointPtr>& joints);
@@ -420,7 +438,7 @@ public:
          */
     float getInertia() const override;
     BoundingBox getLocalAABB() const override;
-    float getGroundFriction() const override;
+    // float getGroundFriction() const override;
     virtual Box2DLinkPtr getBox2DBaseLink();
     void getBox2DLinks(std::vector<Box2DLinkPtr>& links);
     void setPose(float x, float y, float theta);
@@ -516,6 +534,7 @@ public:
     LinkPtr getLink(const std::string& link_name) override;
     LinkConstPtr getConstLink(const std::string& link_name) const override;
     LinkPtr getBaseLink() override;
+    LinkConstPtr getConstBaseLink() const override;
     Box2DLinkPtr getBox2DBaseLink();
     // joints
     void getJoints(std::vector<JointPtr>& joints) override;
@@ -533,7 +552,6 @@ public:
     float getMass() const override;
     float getInertia() const override;
     BoundingBox getLocalAABB() const override;
-    float getGroundFriction() const override;
 
     // state retrieval
     void getState(ObjectState& object_state) const override;

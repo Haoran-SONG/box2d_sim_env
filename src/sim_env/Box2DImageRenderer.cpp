@@ -354,14 +354,15 @@ void sim_env::Box2DImageRenderer::renderObject(cimg_library::CImg<unsigned char>
         Eigen::Affine2f to_world_frame;
         to_world_frame = Eigen::Translation<float, 2>(lpos) * Eigen::Rotation2Df(pose[2]);
         // now get geometry for this link
-        std::vector<std::vector<Eigen::Vector2f>> local_geometry;
-        link->getGeometry(local_geometry);
+        std::vector<sim_env::Geometry> local_geometries;
+        link->getFixtureGeometries(local_geometries);
         // draw each polygon
-        for (auto& polygon : local_geometry) {
-            cimg_library::CImg<int> cimg_polygon(polygon.size(), 2);
+        for (auto& geom : local_geometries) {
+            cimg_library::CImg<int> cimg_polygon(geom.vertices.size(), 2);
             // translate polygon into CImg data structure
-            for (unsigned int i = 0; i < polygon.size(); ++i) {
-                Eigen::Vector2f tp = to_image_frame * to_world_frame * polygon[i];
+            for (unsigned int i = 0; i < geom.vertices.size(); ++i) {
+                Eigen::Vector2f p(geom.vertices.at(i).head(2));
+                Eigen::Vector2f tp = to_image_frame * to_world_frame * p;
                 cimg_polygon(i, 0) = tp[0];
                 cimg_polygon(i, 1) = cimg.height() - tp[1];
             }

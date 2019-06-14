@@ -83,10 +83,11 @@ void sim_env::viewer::Box2DObjectView::paint(QPainter* painter, const QStyleOpti
     }
 }
 
-void sim_env::viewer::Box2DObjectView::setColor(float r, float g, float b)
+void sim_env::viewer::Box2DObjectView::setColor(float r, float g, float b, float a)
 {
     auto color = QColor();
     color.setRgbF(r, g, b);
+    color.setAlphaF(a);
     for (auto* link : _link_views) {
         link->setColors(color, QColor(0, 0, 0), QColor(255, 0, 0, 100));
     }
@@ -161,10 +162,11 @@ sim_env::viewer::Box2DRobotView::Box2DRobotView(sim_env::Box2DRobotPtr robot, Bo
 
 sim_env::viewer::Box2DRobotView::~Box2DRobotView() = default;
 
-void sim_env::viewer::Box2DRobotView::setColor(float r, float g, float b)
+void sim_env::viewer::Box2DRobotView::setColor(float r, float g, float b, float a)
 {
     auto color = QColor();
     color.setRgbF(r, g, b);
+    color.setAlphaF(a);
     for (auto* link : _link_views) {
         link->setColors(color, QColor(0, 0, 0), QColor(255, 0, 0, 100));
     }
@@ -256,11 +258,11 @@ sim_env::viewer::Box2DLinkView::Box2DLinkView(sim_env::Box2DLinkConstPtr link,
     _ball_color = QColor(255, 0, 0, 100);
     Box2DWorldPtr world = link->getBox2DWorld();
 
-    std::vector<std::vector<Eigen::Vector2f>> geometry;
-    link->getGeometry(geometry);
-    for (auto& polygon : geometry) {
+    std::vector<sim_env::Geometry> geometries;
+    link->getFixtureGeometries(geometries);
+    for (auto& geom : geometries) {
         QPolygonF qt_polygon;
-        for (auto& point : polygon) {
+        for (auto& point : geom.vertices) {
             qt_polygon.push_back(QPointF(point[0], point[1]));
         }
         _polygons.push_back(qt_polygon);
@@ -307,10 +309,9 @@ void sim_env::viewer::Box2DLinkView::paint(QPainter* painter, const QStyleOption
     const QBrush original_brush = painter->brush();
     const QPen original_pen = painter->pen();
     // set it semi-transparent in case its inactive
-    if (link->isEnabled()) {
-        _fill_color.setAlphaF(1.0f);
-        _border_color.setAlphaF(1.0f);
-    } else {
+    qreal fill_alpha = _fill_color.alphaF();
+    qreal border_alpha = _fill_color.alphaF();
+    if (!link->isEnabled()) {
         _fill_color.setAlphaF(0.2f);
         _border_color.setAlphaF(0.2f);
     }
@@ -326,6 +327,20 @@ void sim_env::viewer::Box2DLinkView::paint(QPainter* painter, const QStyleOption
     for (auto& polygon : _polygons) {
         painter->drawPolygon(polygon);
     }
+    // draw velocity arrow, if selected
+    if (parentItem()->isSelected()) {
+        Eigen::Vector3f vel;
+        link->getVelocityVector(vel);
+        // float rot_vel = vel[2];
+        if (vel.head(2).norm() > 0.0f) {
+            vel[2] = 0.0f;
+            vel = world_link_transform.rotation().transpose() * vel;
+            QPointF start(0.0f, 0.0f);
+            QPointF end(vel[0], vel[1]);
+            painter->drawLine(start, end);
+            // logger->logDebug(boost::format("Velocity is %1%, %2%") % vel[0] % vel[1], "bla");
+        }
+    }
     // finally, if the object is selected, also draw ball approximation if available
     if (parentItem()->isSelected() and not _balls.empty()) {
         my_brush.setColor(_ball_color);
@@ -336,6 +351,9 @@ void sim_env::viewer::Box2DLinkView::paint(QPainter* painter, const QStyleOption
     }
     painter->setBrush(original_brush);
     painter->setPen(original_pen);
+    // restore alpha
+    _fill_color.setAlphaF(fill_alpha);
+    _border_color.setAlphaF(border_alpha);
 }
 
 //////////////////////////////////////// Box2DJointView ////////////////////////////////////////
@@ -641,18 +659,18 @@ void sim_env::viewer::Box2DScene::repopulate()
 void sim_env::viewer::Box2DScene::setColor(const std::string& name, const Eigen::Vector4f& color)
 {
     // TODO should we support alpha values?
-    setColor(name, color[0], color[1], color[2]);
+    setColor(name, color[0], color[1], color[2], color[3]);
 }
 
-void sim_env::viewer::Box2DScene::setColor(const std::string& name, float r, float g, float b)
+void sim_env::viewer::Box2DScene::setColor(const std::string& name, float r, float g, float b, float a)
 {
     auto iter = _object_views.find(name);
     if (iter != _object_views.end()) {
-        iter->second->setColor(r, g, b);
+        iter->second->setColor(r, g, b, a);
     } else {
         auto iter2 = _robot_views.find(name);
         if (iter2 != _robot_views.end()) {
-            iter2->second->setColor(r, g, b);
+            iter2->second->setColor(r, g, b, a);
         } else {
             auto logger = getLogger();
             logger->logErr("Could not set color for object " + name + " because it was not found",
@@ -1191,7 +1209,12 @@ void sim_env::viewer::Box2DControllerView::setCurrentObject(sim_env::ObjectWeakP
         // ensure we have a position controller for this robot
         auto iter_postion = _position_controllers.find(robot->getName());
         if (iter_postion == _position_controllers.end()) {
-            _current_position_controller = std::make_shared<sim_env::RobotPositionController>(robot, _current_velocity_controller);
+            // create an SE2 controller if the robot is holonomic and has no other DOFs, else create a standard position controller
+            if (robot->getNumBaseDOFs() == 3 and robot->getNumDOFs() == 3) {
+                _current_position_controller = std::make_shared<sim_env::SE2RobotPositionController>(robot, _current_velocity_controller);
+            } else {
+                _current_position_controller = std::make_shared<sim_env::RobotPositionController>(robot, _current_velocity_controller);
+            }
             _position_controllers[robot->getName()] = _current_position_controller;
         } else {
             _current_position_controller = iter_postion->second;
@@ -1361,7 +1384,7 @@ void sim_env::viewer::Box2DControllerView::setController()
         using namespace std::placeholders;
         if (_position_button->isChecked()) {
             // set position controller
-            sim_env::Robot::ControlCallback callback = std::bind(&RobotPositionController::control,
+            sim_env::Robot::ControlCallback callback = std::bind(&RobotController::control,
                 _current_position_controller,
                 _1, _2, _3, _4, _5);
             robot->getWorld()->getLogger()->logDebug("Setting position controller",
@@ -1453,7 +1476,7 @@ void sim_env::viewer::Box2DControllerView::updateTarget()
     if (_velocity_button->isChecked()) {
         _current_velocity_controller->setTargetVelocity(target);
     } else {
-        _current_position_controller->setTargetPosition(target);
+        _current_position_controller->setTarget(target);
     }
 }
 
@@ -1571,7 +1594,7 @@ void sim_env::viewer::Box2DWorldView::scaleView(double scale_factor)
     // this is from a qt example
     qreal factor = transform().scale(scale_factor, scale_factor).mapRect(QRectF(0, 0, 1, 1)).width();
     // TODO this is the width of a unit cube when zoomed. See whether these numbers should be dependent on sth
-    if (factor < 0.7 || factor > 600) {
+    if (factor < 0.7 || factor > 2000) {
         return;
     }
     scale(scale_factor, scale_factor);
