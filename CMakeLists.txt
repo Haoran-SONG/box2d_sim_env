@@ -19,13 +19,12 @@ find_package(Threads REQUIRED)
 # find_package(yaml-cpp REQUIRED)
 find_package(PkgConfig REQUIRED)
 # PNG and JPEG are required for saving images using CImg
-find_package(OpenCV REQUIRED)
 find_package(PNG REQUIRED)
 find_package(JPEG REQUIRED)
 pkg_check_modules(YAML yaml-cpp REQUIRED)
 
 # CImg does not seem to ship any pkg-info file or Find*.cmake, so we add the include path manually:
-set(CImg_INCLUDE_DIRS "/usr/include/CImg.h")
+set(CImg_INCLUDE_DIRS "/usr/include")
 # TODO the following line shouldn't be here. BUt linking without catkin_make does not work otherwise
 # link_directories("/home/joshua/projects/planning_catkin/devel/lib/")
 ## Uncomment this if the package has a setup.py. This macro ensures
