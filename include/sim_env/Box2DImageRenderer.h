@@ -6,8 +6,8 @@
 #define BOX2D_SIM_ENV_BOX2DIMAGERENDERER_H
 
 #include <sim_env/Box2DWorld.h>
-#include <opencv2/highgui/highgui.hpp>
 // CImg
+#define cimg_display 0 // disable cimg gui
 #define cimg_use_png 1 // enable png support
 #define cimg_use_jpeg 1 // enable jpeg support
 #include <CImg.h>

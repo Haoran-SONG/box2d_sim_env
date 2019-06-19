@@ -5,8 +5,6 @@
 #ifndef BOX2D_SIM_ENV_BOX2DWORLDVIEWER_H
 #define BOX2D_SIM_ENV_BOX2DWORLDVIEWER_H
 
-#include <sim_env/Box2DController.h>
-#include <sim_env/Box2DWorld.h>
 // Qt includes
 #include <QRectF>
 #include <QTimer>
@@ -23,6 +21,9 @@
 #include <QtGui/QRadioButton>
 #include <QtGui/QSlider>
 #include <QtGui/QTabWidget>
+// sim_env
+#include <sim_env/Box2DController.h>
+#include <sim_env/Box2DWorld.h>
 // stl includes
 #include <queue>
 #include <thread>

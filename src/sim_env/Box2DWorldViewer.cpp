@@ -2,6 +2,15 @@
 // Created by joshua on 6/26/17.
 //
 
+// QT includes
+#include <QtCore/QSize>
+#include <QtCore/QTimer>
+#include <QtGui/QLabel>
+#include <QtGui/QPushButton>
+#include <QtGui/QRadioButton>
+#include <QtGui/QVBoxLayout>
+#include <QtGui/QWheelEvent>
+#include <QtGui/QWidget>
 // our includes
 #include <sim_env/Box2DController.h>
 #include <sim_env/Box2DWorldViewer.h>
@@ -12,15 +21,6 @@
 #include <random>
 // boost includes
 #include <boost/math/constants/constants.hpp>
-// QT includes
-#include <QtCore/QSize>
-#include <QtCore/QTimer>
-#include <QtGui/QLabel>
-#include <QtGui/QPushButton>
-#include <QtGui/QRadioButton>
-#include <QtGui/QVBoxLayout>
-#include <QtGui/QWheelEvent>
-#include <QtGui/QWidget>
 
 //////////////////////////////////////// utils /////////////////////////////////////////////
 int sim_env::viewer::utils::toTickValue(float value, float min, float max)
