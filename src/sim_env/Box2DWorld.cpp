@@ -658,7 +658,16 @@ void Box2DLink::setOriginToCenterOfMass()
         world->getLogger()->logWarn("Resetting origin to center of mass for non-base link",
             "[sim_env::Box2DLink::setOriginToCenterOfMass]");
     }
-    _local_origin_offset = _body->GetLocalCenter();
+    b2BodyType btype = _body->GetType();
+    // static bodies have no mass, so we can not get center of mass from box2d.
+    // we approximate it with the center of geometry
+    if (btype == b2BodyType::b2_staticBody) {
+        Eigen::Vector3f center = world->getScale() * _local_aabb.center();
+        _local_origin_offset.x = center[0];
+        _local_origin_offset.y = center[1];
+    } else {
+        _local_origin_offset = _body->GetLocalCenter();
+    }
 }
 
 bool Box2DLink::checkCollision()
@@ -3321,7 +3330,7 @@ int Box2DWorld::getPositionSteps() const
 
 bool Box2DWorld::isPhysicallyFeasible()
 {
-    // auto logger = getLogger();
+    auto logger = getLogger();
     std::vector<Contact> contacts;
     checkCollision(contacts);
     for (auto& contact : contacts) {
@@ -3339,9 +3348,9 @@ bool Box2DWorld::isPhysicallyFeasible()
                 bg::intersection(polygon_a, polygon_b, intersections);
                 for (auto& intersection : intersections) {
                     float area = bg::area(intersection);
-                    //                    logger->logDebug(boost::format("Area is %f") % area, "[Box2DWorld::isPhysicallyFeasible]");
+                    logger->logDebug(boost::format("Area is %f") % area, "[Box2DWorld::isPhysicallyFeasible]");
                     if (area > MAX_ALLOWED_INTERSECTION_AREA) {
-                        // logger->logDebug("Current state is physically infeasible", "[Box2DWorld::isPhysicallyFeasible]");
+                        logger->logDebug("Current state is physically infeasible", "[Box2DWorld::isPhysicallyFeasible]");
                         return false;
                     }
                 }
