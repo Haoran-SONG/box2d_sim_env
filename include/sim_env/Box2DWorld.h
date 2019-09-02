@@ -691,6 +691,8 @@ public:
          */
     void invalidateCache();
 
+    std::function<void(LinkPtr, LinkPtr)> contact_report_fn;
+
     // b2ContactListener
     void BeginContact(b2Contact* contact) override;
     void EndContact(b2Contact* contact) override;
@@ -774,8 +776,10 @@ public:
 
     void stepPhysics(int steps) override;
     void stepPhysics(std::vector<Contact>& contacts, int steps = 1) override;
+    bool stepPhysics(const std::function<bool(LinkPtr, LinkPtr)>& callback, int steps = 1) override;
     void stepPhysics(int steps, bool execute_controller, bool allow_sleeping);
     void stepPhysics(std::vector<Contact>& contacts, int steps, bool execute_controller, bool allow_sleeping);
+    bool stepPhysics(const std::function<bool(LinkPtr, LinkPtr)>& callback, int steps, bool execute_controller, bool allow_sleeping);
     bool supportsPhysics() const override;
     void setPhysicsTimeStep(float physics_step) override;
     void setVelocitySteps(int velocity_steps);

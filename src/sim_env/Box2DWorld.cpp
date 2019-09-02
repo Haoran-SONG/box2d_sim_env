@@ -2791,23 +2791,30 @@ void Box2DCollisionChecker::getRecordedContacts(std::vector<Contact>& contacts)
 
 void Box2DCollisionChecker::BeginContact(b2Contact* contact)
 {
-    if (!_b_record_contacts)
-        return;
-    b2Fixture* fixture_a = contact->GetFixtureA();
-    b2Fixture* fixture_b = contact->GetFixtureB();
-    b2WorldManifold world_manifold;
-    contact->GetWorldManifold(&world_manifold);
-    Contact new_contact;
-    // contact point
-    new_contact.contact_point[0] = _scale * world_manifold.points[0].x;
-    new_contact.contact_point[1] = _scale * world_manifold.points[0].y;
-    new_contact.contact_point[2] = 0.0f;
-    // contact normal
-    new_contact.contact_normal[0] = _scale * world_manifold.normal.x;
-    new_contact.contact_normal[1] = _scale * world_manifold.normal.y;
-    new_contact.contact_normal[2] = 0.0f;
-    // add the recording
-    _registered_contacts.push_back(std::make_tuple(fixture_a, fixture_b, new_contact));
+    if (_b_record_contacts) {
+        b2Fixture* fixture_a = contact->GetFixtureA();
+        b2Fixture* fixture_b = contact->GetFixtureB();
+        b2WorldManifold world_manifold;
+        contact->GetWorldManifold(&world_manifold);
+        Contact new_contact;
+        // contact point
+        new_contact.contact_point[0] = _scale * world_manifold.points[0].x;
+        new_contact.contact_point[1] = _scale * world_manifold.points[0].y;
+        new_contact.contact_point[2] = 0.0f;
+        // contact normal
+        new_contact.contact_normal[0] = _scale * world_manifold.normal.x;
+        new_contact.contact_normal[1] = _scale * world_manifold.normal.y;
+        new_contact.contact_normal[2] = 0.0f;
+        // add the recording
+        _registered_contacts.push_back(std::make_tuple(fixture_a, fixture_b, new_contact));
+    }
+    if (contact_report_fn) {
+        b2Fixture* fixture_a = contact->GetFixtureA();
+        b2Fixture* fixture_b = contact->GetFixtureB();
+        Box2DLinkPtr link_a = getBox2DLink(fixture_a->GetBody());
+        Box2DLinkPtr link_b = getBox2DLink(fixture_b->GetBody());
+        contact_report_fn(link_a, link_b);
+    }
 }
 
 void Box2DCollisionChecker::EndContact(b2Contact* contact)
@@ -2961,6 +2968,11 @@ void Box2DCollisionChecker::invalidateCache()
 {
     _cache_invalid = true;
 }
+
+// void Box2DCollisionChecker::setContactReportFn(const std::function<void(LinkPtr, LinkPtr)>& report_fn)
+// {
+//     _contact_report_fn = report_fn;
+// }
 ////////////////////////////////////////////////////////////////////////////////
 /////////////////////* Definition of Box2DAABBQuerier members */////////////////
 ////////////////////////////////////////////////////////////////////////////////
@@ -3151,7 +3163,6 @@ Box2DObjectConstPtr Box2DWorld::getBox2DObjectConst(const std::string& name) con
 
 void Box2DWorld::getObjects(std::vector<ObjectPtr>& objects, bool exclude_robots)
 {
-    // TODO do not understand why we cant just call getBox2DObjects(..)
     Box2DWorldLock lock(getMutex());
     if (!exclude_robots) {
         std::vector<RobotPtr> robots;
@@ -3247,6 +3258,11 @@ void Box2DWorld::stepPhysics(int steps)
     stepPhysics(steps, true, true);
 }
 
+bool Box2DWorld::stepPhysics(const std::function<bool(LinkPtr, LinkPtr)>& callback, int steps) 
+{
+    return stepPhysics(callback, steps, true, true);
+}
+
 void Box2DWorld::stepPhysics(int steps, bool execute_controllers, bool allow_sleeping)
 {
     Box2DWorldLock lock(getMutex());
@@ -3291,6 +3307,29 @@ void Box2DWorld::stepPhysics(std::vector<Contact>& contacts, int steps,
         _world->SetAllowSleeping(true);
     }
     _collision_checker->getRecordedContacts(contacts);
+}
+
+bool Box2DWorld::stepPhysics(const std::function<bool(LinkPtr, LinkPtr)>& callback, int steps, bool execute_controllers, bool allow_sleeping) 
+{
+    Box2DWorldLock lock(getMutex());
+    invalidateCollisionCache();
+    bool abort_prematurely = false;
+    _collision_checker->contact_report_fn = [&abort_prematurely, callback](LinkPtr a, LinkPtr b)mutable {abort_prematurely = not callback(a, b);};
+    for (int i = 0; i < steps and not abort_prematurely; ++i) {
+        if (execute_controllers) {
+            // call control functions of all robots in the scene
+            for (auto& robot_map_iter : _robots) {
+                robot_map_iter.second->control(_time_step);
+            }
+        }
+        // simulate physics
+        _world->SetAllowSleeping(allow_sleeping);
+        _world->Step(_time_step, _velocity_steps, _position_steps);
+        _world->ClearForces();
+        _world->SetAllowSleeping(true);
+    }
+    _collision_checker->contact_report_fn = std::function<void(LinkPtr, LinkPtr)>();
+    return not abort_prematurely;
 }
 
 bool Box2DWorld::supportsPhysics() const
