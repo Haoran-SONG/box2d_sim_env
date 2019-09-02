@@ -474,7 +474,7 @@ private:
     Box2DLinkPtr _base_link;
     std::map<std::string, Box2DJointPtr> _joints; // the object is responsible for the lifetime of its links
     std::vector<Box2DJointPtr> _sorted_joints; // sorted list of objects
-    bool _is_static;
+    const bool _is_static;
     bool _destroyed;
 };
 
@@ -770,6 +770,9 @@ public:
     void getObjects(std::vector<ObjectPtr>& objects, bool exclude_robots) override;
     void getObjects(std::vector<ObjectConstPtr>& objects, bool exclude_robots) const override;
 
+    void getStaticObjects(std::vector<ObjectPtr>& statics) override;
+    void getStaticObjects(std::vector<ObjectConstPtr>& statics) const override;
+
     void getObjects(const BoundingBox& aabb, std::vector<ObjectPtr>& objects, bool exclude_robots) override;
     void getObjects(const BoundingBox& aabb, std::vector<ObjectConstPtr>& objects,
         bool exclude_robots = true) const override;
@@ -861,6 +864,7 @@ private:
     float _scale;
     std::map<std::string, Box2DObjectPtr> _objects;
     std::map<std::string, Box2DRobotPtr> _robots;
+    std::vector<Box2DObjectPtr> _statics;
     std::stack<WorldState> _state_stack;
     Eigen::Vector4f _world_bounds;
     WorldViewerPtr _world_viewer;

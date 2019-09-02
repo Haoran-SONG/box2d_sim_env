@@ -1291,9 +1291,9 @@ b2Vec2 Box2DJoint::getGlobalAxisPosition() const
 
 Box2DObject::Box2DObject(const Box2DObjectDescription& obj_desc, Box2DWorldPtr world)
     : _destroyed(false)
+    , _is_static(obj_desc.is_static)
 {
     _name = obj_desc.name;
-    _is_static = obj_desc.is_static;
     _world = Box2DWorldWeakPtr(world);
     _mass = 0.0f;
     // first create links
@@ -3176,7 +3176,6 @@ void Box2DWorld::getObjects(std::vector<ObjectPtr>& objects, bool exclude_robots
 
 void Box2DWorld::getObjects(std::vector<ObjectConstPtr>& objects, bool exclude_robots) const
 {
-    // TODO do not understand why we cant just call getBox2DObjects(..)
     Box2DWorldLock lock(getMutex());
     if (!exclude_robots) {
         std::vector<RobotConstPtr> robots;
@@ -3186,6 +3185,18 @@ void Box2DWorld::getObjects(std::vector<ObjectConstPtr>& objects, bool exclude_r
     for (auto& obj_map_iter : _objects) {
         objects.push_back(obj_map_iter.second);
     }
+}
+
+void Box2DWorld::getStaticObjects(std::vector<ObjectPtr>& objects)
+{
+    Box2DWorldLock lock(getMutex());
+    objects.insert(objects.end(), _statics.begin(), _statics.end());
+}
+
+void Box2DWorld::getStaticObjects(std::vector<ObjectConstPtr>& objects) const
+{
+    Box2DWorldLock lock(getMutex());
+    objects.insert(objects.end(), _statics.begin(), _statics.end());
 }
 
 void Box2DWorld::getBox2DObjects(std::vector<Box2DObjectPtr>& objects)
@@ -3258,7 +3269,7 @@ void Box2DWorld::stepPhysics(int steps)
     stepPhysics(steps, true, true);
 }
 
-bool Box2DWorld::stepPhysics(const std::function<bool(LinkPtr, LinkPtr)>& callback, int steps) 
+bool Box2DWorld::stepPhysics(const std::function<bool(LinkPtr, LinkPtr)>& callback, int steps)
 {
     return stepPhysics(callback, steps, true, true);
 }
@@ -3309,12 +3320,12 @@ void Box2DWorld::stepPhysics(std::vector<Contact>& contacts, int steps,
     _collision_checker->getRecordedContacts(contacts);
 }
 
-bool Box2DWorld::stepPhysics(const std::function<bool(LinkPtr, LinkPtr)>& callback, int steps, bool execute_controllers, bool allow_sleeping) 
+bool Box2DWorld::stepPhysics(const std::function<bool(LinkPtr, LinkPtr)>& callback, int steps, bool execute_controllers, bool allow_sleeping)
 {
     Box2DWorldLock lock(getMutex());
     invalidateCollisionCache();
     bool abort_prematurely = false;
-    _collision_checker->contact_report_fn = [&abort_prematurely, callback](LinkPtr a, LinkPtr b)mutable {abort_prematurely = not callback(a, b);};
+    _collision_checker->contact_report_fn = [&abort_prematurely, callback](LinkPtr a, LinkPtr b) mutable { abort_prematurely = not callback(a, b); };
     for (int i = 0; i < steps and not abort_prematurely; ++i) {
         if (execute_controllers) {
             // call control functions of all robots in the scene
@@ -3602,6 +3613,7 @@ void Box2DWorld::eraseWorld()
         object_iter.second->destroy(_world);
     }
     _objects.clear();
+    _statics.clear();
     deleteGroundBody();
     _world.reset();
     _collision_checker.reset();
@@ -3628,6 +3640,9 @@ void Box2DWorld::createNewObject(const Box2DObjectDescription& object_desc)
         object->setName(new_name);
     }
     _objects[object->getName()] = object;
+    if (object->isStatic()) {
+        _statics.push_back(object);
+    }
 }
 
 void Box2DWorld::createNewRobot(const Box2DRobotDescription& robot_desc)
