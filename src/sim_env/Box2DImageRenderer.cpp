@@ -8,19 +8,19 @@ sim_env::Box2DImageRenderer::Box2DImageRenderer(sim_env::Box2DWorldPtr world)
     // run over objects and get largest bounding box
     std::vector<sim_env::Box2DObjectPtr> objects;
     _world->getBox2DObjects(objects);
-    sim_env::BoundingBox max_obj_size_box;
+    // sim_env::BoundingBox max_obj_size_box;
     for (auto object : objects) {
         auto laabb = object->getLocalAABB();
-        max_obj_size_box.merge(laabb);
+        // max_obj_size_box.merge(laabb);
     }
-    Eigen::Vector3f max_obj_size = max_obj_size_box.extents();
-    float max_extent = std::max(max_obj_size[0], max_obj_size[1]);
+    // Eigen::Vector3f max_obj_size = max_obj_size_box.extents();
+    // float max_extent = std::max(max_obj_size[0], max_obj_size[1]); // TODO should be radius
     // compute bounding box for world
     Eigen::Vector4f world_bounds = _world->getWorldBounds();
-    _world_region.min_corner[0] = world_bounds[0] - max_extent;
-    _world_region.min_corner[1] = world_bounds[1] - max_extent;
-    _world_region.max_corner[0] = world_bounds[2] + max_extent;
-    _world_region.max_corner[1] = world_bounds[3] + max_extent;
+    _world_region.min_corner[0] = world_bounds[0]; //- max_extent;
+    _world_region.min_corner[1] = world_bounds[1]; //- max_extent;
+    _world_region.max_corner[0] = world_bounds[2]; //+ max_extent;
+    _world_region.max_corner[1] = world_bounds[3]; //+ max_extent;
     _drawing_region = _world_region;
     // set colors of robots
     std::vector<sim_env::RobotPtr> robots;
@@ -137,7 +137,8 @@ bool sim_env::Box2DImageRenderer::renderImage(const std::string& filename, unsig
 
 // Only belong to the sim_env::Box2DImageRenderer class.
 bool sim_env::Box2DImageRenderer::renderState(cimg_library::CImg<unsigned char>& image,
-                                              unsigned int width, unsigned int height, bool include_drawings) {
+    unsigned int width, unsigned int height, bool include_drawings)
+{
     std::lock_guard<std::recursive_mutex> guard(_mutex);
     std::lock_guard<std::recursive_mutex> world_guard(_world->getMutex());
     // 1. compute projection matrix
@@ -237,8 +238,9 @@ void sim_env::Box2DImageRenderer::removeAllDrawings()
     _frames.clear();
 }
 
-void sim_env::Box2DImageRenderer::initGroupColors(const std::vector<float> &group_colors,
-                                                  const std::map<std::string, unsigned int> &group_objects) {
+void sim_env::Box2DImageRenderer::initGroupColors(const std::vector<float>& group_colors,
+    const std::map<std::string, unsigned int>& group_objects)
+{
     unsigned long idx, color_idx;
     Eigen::Vector4f color;
     color[3] = 1.0f;
@@ -246,13 +248,11 @@ void sim_env::Box2DImageRenderer::initGroupColors(const std::vector<float> &grou
         idx = elem.second;
         color_idx = idx * 3;
         color[0] = group_colors.at(color_idx);
-        color[1] = group_colors.at(color_idx+1);
-        color[2] = group_colors.at(color_idx+2);
+        color[1] = group_colors.at(color_idx + 1);
+        color[2] = group_colors.at(color_idx + 2);
         setColor(elem.first, color);
     }
 }
-
-
 
 void sim_env::Box2DImageRenderer::extendBounds(const Line& line)
 {
