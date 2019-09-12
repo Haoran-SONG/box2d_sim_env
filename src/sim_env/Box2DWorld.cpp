@@ -1283,6 +1283,8 @@ b2Vec2 Box2DJoint::getGlobalAxisPosition() const
         //TODO
         throw std::logic_error("getLocalAxisPosition for prismatic joints is not implemented yet");
     }
+    default:
+        throw std::logic_error("Unknown JointType.");
     }
 }
 ////////////////////////////////////////////////////////////////////////////////

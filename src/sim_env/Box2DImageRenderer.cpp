@@ -9,10 +9,10 @@ sim_env::Box2DImageRenderer::Box2DImageRenderer(sim_env::Box2DWorldPtr world)
     std::vector<sim_env::Box2DObjectPtr> objects;
     _world->getBox2DObjects(objects);
     // sim_env::BoundingBox max_obj_size_box;
-    for (auto object : objects) {
-        auto laabb = object->getLocalAABB();
-        // max_obj_size_box.merge(laabb);
-    }
+    // for (auto object : objects) {
+    //     auto laabb = object->getLocalAABB();
+    // max_obj_size_box.merge(laabb);
+    // }
     // Eigen::Vector3f max_obj_size = max_obj_size_box.extents();
     // float max_extent = std::max(max_obj_size[0], max_obj_size[1]); // TODO should be radius
     // compute bounding box for world
