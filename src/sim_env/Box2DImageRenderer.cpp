@@ -107,37 +107,16 @@ sim_env::WorldViewer::Handle sim_env::Box2DImageRenderer::drawVoxelGrid(const gr
 bool sim_env::Box2DImageRenderer::renderImage(const std::string& filename, unsigned int width, unsigned int height,
     bool include_drawings)
 {
-    std::lock_guard<std::recursive_mutex> guard(_mutex);
-    std::lock_guard<std::recursive_mutex> world_guard(_world->getMutex());
-    // 1. compute projection matrix
-    sim_env::BoundingBox target_region = _drawing_region;
-    if (_camera_on_world) {
-        target_region = _world_region;
-    }
-    assert(target_region.getWidth() > 0);
-    assert(target_region.getHeight() > 0);
-    float scaling_factor = std::min(width / target_region.getWidth(), height / target_region.getHeight());
-    Eigen::Affine2f to_image_tf;
-    to_image_tf = Eigen::Scaling(scaling_factor) * Eigen::Translation<float, 2>(-target_region.min_corner[0], -target_region.min_corner[1]);
-    // 2. create image
+    // 1. create image
     cimg_library::CImg<unsigned char> image(width, height, 1, 3, 255);
-    // 3. draw objects and robot
-    renderObjects(image, to_image_tf);
-    // 4. optionally draw additional drawings
-    if (include_drawings) {
-        renderSpheres(image, to_image_tf, scaling_factor);
-        renderLines(image, to_image_tf);
-        renderFrames(image, to_image_tf);
-        renderBoxes(image, to_image_tf);
-    }
+    // 2. render image
+    renderImage(image, include_drawings);
     // 5. save image
     image.save(filename.c_str());
     return true;
 }
 
-// Only belong to the sim_env::Box2DImageRenderer class.
-bool sim_env::Box2DImageRenderer::renderState(cimg_library::CImg<unsigned char>& image,
-    unsigned int width, unsigned int height, bool include_drawings)
+void sim_env::Box2DImageRenderer::renderImage(cimg_library::CImg<unsigned char>& image, bool include_drawings)
 {
     std::lock_guard<std::recursive_mutex> guard(_mutex);
     std::lock_guard<std::recursive_mutex> world_guard(_world->getMutex());
@@ -148,22 +127,18 @@ bool sim_env::Box2DImageRenderer::renderState(cimg_library::CImg<unsigned char>&
     }
     assert(target_region.getWidth() > 0);
     assert(target_region.getHeight() > 0);
-    float scaling_factor = std::min(width / target_region.getWidth(), height / target_region.getHeight());
+    float scaling_factor = std::min(image.width() / target_region.getWidth(), image.height() / target_region.getHeight());
     Eigen::Affine2f to_image_tf;
     to_image_tf = Eigen::Scaling(scaling_factor) * Eigen::Translation<float, 2>(-target_region.min_corner[0], -target_region.min_corner[1]);
-    // image is passed in
-    // cimg_library::CImg<unsigned char> image(width, height, 1, 3, 255);
-
-    // 3. draw objects and robot
+    // 2. draw objects and robot
     renderObjects(image, to_image_tf);
-    // 4. optionally draw additional drawings
+    // 3. optionally draw additional drawings
     if (include_drawings) {
         renderSpheres(image, to_image_tf, scaling_factor);
         renderLines(image, to_image_tf);
         renderFrames(image, to_image_tf);
         renderBoxes(image, to_image_tf);
     }
-    return true;
 }
 
 void sim_env::Box2DImageRenderer::setVisible(const std::string& name, bool visible)

@@ -5,8 +5,8 @@
 #ifndef BOX2D_SIM_ENV_BOX2DIMAGERENDERER_H
 #define BOX2D_SIM_ENV_BOX2DIMAGERENDERER_H
 
-#include <sim_env/Box2DWorld.h>
 #include <opencv2/highgui/highgui.hpp>
+#include <sim_env/Box2DWorld.h>
 // CImg
 #define cimg_display 0 // disable CImg GUI support
 #define cimg_use_png 1 // enable png support
@@ -96,17 +96,15 @@ public:
      *  @param include_drawings - if true, also render additional drawings in image, else not
      */
     bool renderImage(const std::string& filename,
-                     unsigned int width, unsigned int height, bool include_drawings = false) override;
+        unsigned int width, unsigned int height, bool include_drawings = false) override;
     /**
-     * Render the scene and pass it using CImg class.
+     * Render the scene from the current camera view to an image.
+     * The underlying implementation guarantees that this method is thread-safe.
      * @param image
-     * @param width
-     * @param height
      * @param include_drawings
      * @return
      */
-    bool renderState(cimg_library::CImg<unsigned char>& image,
-                     unsigned int width, unsigned int height, bool include_drawings = false);
+    void renderImage(cimg_library::CImg<unsigned char>& image, bool include_drawings = false);
 
     /**
      *  Resets the camera to default view.
@@ -144,7 +142,7 @@ public:
      * Initialize the renderer with a sorting group and its corresponding group colors.
      */
     void initGroupColors(const std::vector<float>& group_colors,
-                                 const std::map<std::string, unsigned int> &group_objects);
+        const std::map<std::string, unsigned int>& group_objects);
 
 protected:
     struct ObjectInfo {
@@ -314,10 +312,10 @@ private:
     void renderBox(cimg_library::CImg<unsigned char>& cimg, const Eigen::Affine2f& to_image_frame, const Box& box) const;
     void renderObject(cimg_library::CImg<unsigned char>& cimg, const Eigen::Affine2f& to_image_frame, Box2DObjectPtr object) const;
 };
-    typedef std::shared_ptr<Box2DImageRenderer> Box2DImageRendererPtr;
-    typedef std::shared_ptr<const Box2DImageRenderer> Box2DImageRendererConstPtr;
-    typedef std::weak_ptr<Box2DImageRenderer> Box2DImageRendererWeakPtr;
-    typedef std::weak_ptr<const Box2DImageRenderer> Box2DImageRendererWeakConstPtr;
+typedef std::shared_ptr<Box2DImageRenderer> Box2DImageRendererPtr;
+typedef std::shared_ptr<const Box2DImageRenderer> Box2DImageRendererConstPtr;
+typedef std::weak_ptr<Box2DImageRenderer> Box2DImageRendererWeakPtr;
+typedef std::weak_ptr<const Box2DImageRenderer> Box2DImageRendererWeakConstPtr;
 } // namespace sim_env
 
 #endif
